@@ -31,7 +31,7 @@ AI extraction and translation help prepare a draft. Staff remain responsible for
 Use Node.js 24 and Bun. To run the seeded demo, start without an environment file.
 
 ~~~sh
-git clone https://github.com/Qianjiu-Ma/CS497-CareBridge.git
+git clone https://github.com/Qianjiu-Ma/CS497-CS698-HLTH480-CareBridge.git
 cd CS497-CareBridge
 bun install --frozen-lockfile
 bun run dev
