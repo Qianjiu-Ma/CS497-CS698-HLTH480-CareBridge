@@ -1,6 +1,6 @@
 # CareBridge
 
-**University of Waterloo · CS497 group project**
+**University of Waterloo · CS497/CS698/HLTH480 group project**
 
 CareBridge is an AI-assisted multilingual shift handoff prototype for long-term care. It explores how care staff can turn a spoken or typed report into structured documentation, surface changes for nurse review, and give the incoming team a clear list of follow-up tasks. The app ships with fictional residents and sample shifts.
 
