@@ -1,6 +1,7 @@
 import { AlertThresholds, HandoffRow, NurseEscalation } from '../types/handoff';
 import { computeRowSeverity, getCodeConfig } from '../data/stopAndWatchCodes';
 import { getResidentStatus } from './residentStatus';
+import { l10n } from './localization';
 
 export type IncomingTask = {
   id: string;
@@ -125,22 +126,29 @@ export function buildIncomingResidents(rows: HandoffRow[], escalations: NurseEsc
     const notified = row.toldNurse?.isPendingConfirmation ? 'RN notification unverified'
       : row.toldNurse?.value ? 'RN notified' : 'RN not yet notified';
 
-    let title = finding || codes.map((code) => getCodeConfig(code, thresholds.customCodeTiers)?.plainLabel || code).join(', ');
-    let summary = status.isLowFluid ? 'Low fluid intake · ' + fluidIntakeMl?.value + ' mL' : '';
+    let title = finding || codes.map((code) => l10n(getCodeConfig(code, thresholds.customCodeTiers)?.plainLabel || code)).join(', ');
+    const fluid = fluidIntakeMl?.value;
+    let summary = status.isLowFluid && fluid != null ? l10n('Low fluid intake · {{volume}} mL', { volume: fluid }) : '';
     if (explicitUrgency && codes.includes('C') && /\bredness on heel does not blanch\b/i.test(observation || '') &&
       /\bred area on left heel\b/i.test(finding)) {
       title = 'Heel redness does not blanch';
-      if (status.isLowFluid && codes.includes('D')) summary = 'Drank less · ' + fluidIntakeMl?.value + ' mL recorded';
+      if (status.isLowFluid && fluid != null && codes.includes('D')) {
+        summary = l10n('Drank less · {{volume}} mL recorded', { volume: fluid });
+      }
     } else if (status.isBmOverdue && !explicitUrgency) {
-      title = hoursSinceLastBM?.value == null ? 'Bowel movement overdue' : 'Last bowel movement ' + hoursSinceLastBM.value + ' h ago';
-      if (status.isLowFluid && codes.includes('A_ate')) summary = 'Ate less · ' + fluidIntakeMl?.value + ' mL fluids';
+      title = hoursSinceLastBM?.value == null
+        ? 'Bowel movement overdue'
+        : l10n('Last bowel movement {{hours}} h ago', { hours: hoursSinceLastBM.value });
+      if (status.isLowFluid && fluid != null && codes.includes('A_ate')) {
+        summary = l10n('Ate less · {{volume}} mL fluids', { volume: fluid });
+      }
     } else if (codes.includes('H') && /\bneeded (?:2|two) people to transfer\b/i.test(finding)) {
       title = 'Transfer needed two people';
       if (/\bright-side leaning\b/i.test(observation || '') && /\bslight leg tremor\b/i.test(observation || '')) {
         summary = 'Right-side leaning · slight leg tremor';
       }
     }
-    if (status.isBmOverdue && explicitUrgency) summary = [summary, 'Bowel movement overdue'].filter(Boolean).join(' · ');
+    if (status.isBmOverdue && explicitUrgency) summary = [summary, l10n('Bowel movement overdue')].filter(Boolean).join(' · ');
     return {
       row, codes, status, rank, label, notified, unverified,
       finding, observation, episode: active || latestEpisode,

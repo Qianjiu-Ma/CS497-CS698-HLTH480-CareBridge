@@ -1,6 +1,8 @@
+import { l10n } from '../utils/localization';
 import React, { useEffect, useRef } from 'react';
-import { CircleAlert, FileText, Folder, Globe, HeartPulse, ListChecks, Printer, SlidersHorizontal } from 'lucide-react';
-import { InterfaceLanguage, UiTranslations } from '../utils/uiTranslations';
+import { CircleAlert, FileText, Folder, HeartPulse, ListChecks, Printer, SlidersHorizontal } from 'lucide-react';
+import type { InterfaceLanguage } from '../utils/localization';
+import { LanguagePicker } from './LanguagePicker';
 import { Button } from './WorkspaceUi';
 
 export type ScreenTab = 'handoff' | 'nurse' | 'incoming' | 'emr' | 'settings';
@@ -12,32 +14,20 @@ interface NavigationProps {
   onPrintPaperFallback: () => void;
   interfaceLanguage?: InterfaceLanguage;
   onLanguageChange?: (lang: InterfaceLanguage) => void;
-  t: UiTranslations;
-}
 
-const languages: { id: InterfaceLanguage; name: string }[] = [
-  { id: 'en', name: 'English (CA)' },
-  { id: 'tl', name: 'Tagalog' },
-  { id: 'pa', name: 'ਪੰਜਾਬੀ (Punjabi)' },
-  { id: 'hi', name: 'हिन्दी (Hindi)' },
-  { id: 'zh', name: '普通话 (Mandarin)' },
-  { id: 'es', name: 'Español' },
-  { id: 'fr', name: 'Français' },
-  { id: 'ar', name: 'العربية' },
-];
+}
 
 export const Navigation: React.FC<NavigationProps> = ({
   currentTab, onTabChange, pendingNurseEscalationsCount, onPrintPaperFallback,
-  interfaceLanguage = 'en', onLanguageChange, t,
+  interfaceLanguage = 'en', onLanguageChange,
 }) => {
   const navigation = useRef<HTMLElement>(null);
-  const isEnglish = interfaceLanguage === 'en';
   const tabs = [
-    { id: 'handoff', label: isEnglish ? 'Handoff' : t.tabHandoff, Icon: FileText },
-    { id: 'nurse', label: isEnglish ? 'Clinical review' : t.tabNurse, Icon: CircleAlert },
-    { id: 'incoming', label: isEnglish ? 'My shift' : t.tabIncoming, Icon: ListChecks },
-    { id: 'emr', label: isEnglish ? 'Records' : t.tabEmr, Icon: Folder },
-    { id: 'settings', label: isEnglish ? 'Settings' : t.tabSettings, Icon: SlidersHorizontal },
+    { id: 'handoff', label: l10n('Handoff'), Icon: FileText },
+    { id: 'nurse', label: l10n('Clinical review'), Icon: CircleAlert },
+    { id: 'incoming', label: l10n('My shift'), Icon: ListChecks },
+    { id: 'emr', label: l10n('Records'), Icon: Folder },
+    { id: 'settings', label: l10n('Settings'), Icon: SlidersHorizontal },
   ] as const;
 
   useEffect(() => {
@@ -57,13 +47,13 @@ export const Navigation: React.FC<NavigationProps> = ({
         <button type="button" className="cb-brand" onClick={() => onTabChange('handoff')}>
           <HeartPulse aria-hidden="true" /> CareBridge
         </button>
-        <nav className="cb-nav-tabs" aria-label="Main navigation" ref={navigation}>
+        <nav className="cb-nav-tabs" aria-label={l10n("Main navigation")} ref={navigation}>
           {tabs.map(({ id, label, Icon }) => (
             <button key={id} type="button" data-tab={id} aria-current={id === currentTab ? 'page' : undefined}
               onClick={() => onTabChange(id)}>
               <Icon aria-hidden="true" /> {label}
               {id === 'nurse' && pendingNurseEscalationsCount > 0 && (
-                <span className="cb-nav-count" aria-label={pendingNurseEscalationsCount + ' pending reviews'}>
+                <span className="cb-nav-count" aria-label={l10n('Pending reviews: {{count}}', { count: pendingNurseEscalationsCount })}>
                   {pendingNurseEscalationsCount}
                 </span>
               )}
@@ -71,17 +61,9 @@ export const Navigation: React.FC<NavigationProps> = ({
           ))}
         </nav>
         <div className="cb-nav-tools">
-          {onLanguageChange && (
-            <label className="cb-button cb-language" title={languages.find(({ id }) => id === interfaceLanguage)?.name}>
-              <Globe aria-hidden="true" /> <span aria-hidden="true">{interfaceLanguage.toUpperCase()}</span>
-              <select value={interfaceLanguage} aria-label="Global reading language"
-                onChange={(event) => onLanguageChange(event.target.value as InterfaceLanguage)}>
-                {languages.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
-              </select>
-            </label>
-          )}
-          <Button onClick={onPrintPaperFallback} aria-label={t.printPaperSheet}>
-            <Printer aria-hidden="true" /><span className="cb-print-label">{isEnglish ? 'Print' : t.printPaperSheet}</span>
+          {onLanguageChange && <LanguagePicker language={interfaceLanguage} onChange={onLanguageChange} />}
+          <Button onClick={onPrintPaperFallback} aria-label={l10n('Print paper sheet')}>
+            <Printer aria-hidden="true" /><span className="cb-print-label">{l10n('Print')}</span>
           </Button>
         </div>
       </div>

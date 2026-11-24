@@ -1,3 +1,4 @@
+import { l10n } from '../utils/localization';
 import { forwardRef, ReactNode, ButtonHTMLAttributes, useLayoutEffect, useRef } from 'react';
 import { ShieldCheck } from 'lucide-react';
 
@@ -18,7 +19,7 @@ export const PageHeader = forwardRef<HTMLHeadingElement, {
 
 export const WorkspaceFooter = ({ children, notice }: { children?: ReactNode; notice?: string }) => (
   <footer className="cb-workspace-footer">
-    <p><ShieldCheck /> {notice || 'Decision support only · Clinical decisions remain with the nurse.'}</p>
+    <p><ShieldCheck /> {notice || l10n("Decision support only · Clinical decisions remain with the nurse.")}</p>
     {children && <div className="cb-footer-actions">{children}</div>}
   </footer>
 );

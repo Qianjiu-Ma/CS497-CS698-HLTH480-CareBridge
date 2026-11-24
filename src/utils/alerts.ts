@@ -1,3 +1,4 @@
+import { l10n } from './localization';
 import { HandoffRow, AlertThresholds, DeterministicAlert } from '../types/handoff';
 
 /**
@@ -24,9 +25,9 @@ export function evaluateDeterministicAlerts(
         residentName: row.residentName,
         severity: 'info_missing',
         type: 'missing_care',
-        title: 'Missing Care Documentation',
-        message: `Nothing recorded for ${row.residentName} (Room ${row.room}). Was this a normal shift (Per care plan) or are there changes?`,
-        actionRequired: 'Confirm "Per care plan" or specify care completed.',
+        title: l10n('Missing Care Documentation'),
+        message: l10n("Nothing recorded for {{p1}} (Room {{p2}}). Was this a normal shift (Per care plan) or are there changes?", { p1: row.residentName, p2: row.room }),
+        actionRequired: l10n('Confirm "Per care plan" or specify care completed.'),
       });
     }
 
@@ -39,9 +40,9 @@ export function evaluateDeterministicAlerts(
         residentName: row.residentName,
         severity: 'info_missing',
         type: 'missing_required',
-        title: 'MLTC Required: Qualitative Observation',
-        message: `No qualitative observation recorded for ${row.residentName}. Ministry of Long-Term Care requires engagement/mood documentation.`,
-        actionRequired: 'Add a brief note on mood, energy, or participation.',
+        title: l10n('MLTC Required: Qualitative Observation'),
+        message: l10n("No qualitative observation recorded for {{p1}}. Ministry of Long-Term Care requires engagement/mood documentation.", { p1: row.residentName }),
+        actionRequired: l10n('Add a brief note on mood, energy, or participation.'),
       });
     }
 
@@ -54,9 +55,9 @@ export function evaluateDeterministicAlerts(
         residentName: row.residentName,
         severity: 'warning',
         type: 'fluid_low',
-        title: 'Low Fluid Intake Alert',
-        message: `${row.residentName} recorded ${fluid} mL intake, which is below the target minimum (${thresholds.fluidIntakeMinMl} mL).`,
-        actionRequired: 'Flag for next shift to encourage fluids and offer preferred beverages.',
+        title: l10n('Low Fluid Intake Alert'),
+        message: l10n("{{p1}} recorded {{p2}} mL intake, which is below the target minimum ({{p3}} mL).", { p1: row.residentName, p2: fluid, p3: thresholds.fluidIntakeMinMl }),
+        actionRequired: l10n('Flag for next shift to encourage fluids and offer preferred beverages.'),
       });
     }
 
@@ -76,9 +77,9 @@ export function evaluateDeterministicAlerts(
         residentName: row.residentName,
         severity: 'critical_nurse',
         type: 'bm_overdue',
-        title: 'Bowel Movement Protocol Alert (>=48h)',
-        message: `No bowel movement logged for ${row.residentName} in over ${hoursSinceBM || 48} hours. Approaching INTERACT Code N standard.`,
-        actionRequired: 'Escalate to Charge Nurse for PRN bowel protocol assessment.',
+        title: l10n('Bowel Movement Protocol Alert (>=48h)'),
+        message: l10n("No bowel movement logged for {{p1}} in over {{p2}} hours. Approaching INTERACT Code N standard.", { p1: row.residentName, p2: hoursSinceBM || 48 }),
+        actionRequired: l10n('Escalate to Charge Nurse for PRN bowel protocol assessment.'),
       });
     }
 
@@ -93,9 +94,9 @@ export function evaluateDeterministicAlerts(
           residentName: row.residentName,
           severity: 'critical_nurse',
           type: 'nurse_escalation',
-          title: 'Stop & Watch Early Warning: Nurse Notification Required',
-          message: `Change codes [${codes.join(', ')}] recorded for ${row.residentName} without confirmed Charge Nurse notification.`,
-          actionRequired: 'Notify Charge Nurse and log nurse initials, or provide explicit override.',
+          title: l10n('Stop & Watch Early Warning: Nurse Notification Required'),
+          message: l10n("Change codes [{{p1}}] recorded for {{p2}} without confirmed Charge Nurse notification.", { p1: codes.join(', '), p2: row.residentName }),
+          actionRequired: l10n('Notify Charge Nurse and log nurse initials, or provide explicit override.'),
         });
       }
     }

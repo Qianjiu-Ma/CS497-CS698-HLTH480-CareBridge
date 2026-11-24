@@ -1,6 +1,7 @@
+import { formatUiDate, l10n } from './localization';
 import { EMRRecord, HandoffRow, NurseEscalation } from '../types/handoff';
 import { getCodeConfig, getTranslatedStopAndWatchLabel } from '../data/stopAndWatchCodes';
-import { InterfaceLanguage } from './uiTranslations';
+import type { InterfaceLanguage } from './localization';
 
 export function archivedCodeLabels(codes: string[], language: InterfaceLanguage = 'en'): string[] {
   return codes.map((code) => {
@@ -18,16 +19,16 @@ export function hasArchivedChange(record: EMRRecord, row: HandoffRow): boolean {
 export function archivedShiftParts(record: EMRRecord) {
   const [shift, hours] = record.header.shift.split(' (');
   const date = new Date(record.header.date + 'T00:00:00Z');
-  const day = Number.isNaN(date.valueOf()) ? record.header.date : new Intl.DateTimeFormat('en-CA', {
+  const day = Number.isNaN(date.valueOf()) ? record.header.date : formatUiDate(date, {
     month: 'short', day: 'numeric', timeZone: 'UTC',
-  }).format(date);
+  });
   const archiveDate = new Date(record.submittedAt);
-  const archivedAt = Number.isNaN(archiveDate.valueOf()) ? record.submittedAt : new Intl.DateTimeFormat('en-CA', {
+  const archivedAt = Number.isNaN(archiveDate.valueOf()) ? record.submittedAt : formatUiDate(archiveDate, {
     hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).format(archiveDate);
+  });
   return {
     shift,
-    title: day + ' · ' + shift + ' shift',
+    title: l10n('{{date}} · {{shift}}', { date: day, shift: l10n(shift + ' shift') }),
     hours: hours?.replace(/\)$/, '').replace(/\s+-\s+/g, '–'),
     archivedAt,
   };

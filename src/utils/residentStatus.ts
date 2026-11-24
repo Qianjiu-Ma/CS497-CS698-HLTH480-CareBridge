@@ -1,3 +1,4 @@
+import { l10n } from './localization';
 import { AlertThresholds, HandoffRow } from '../types/handoff';
 import { computeRowSeverity, SeverityTier } from '../data/stopAndWatchCodes';
 
@@ -32,22 +33,22 @@ export interface UnifiedResidentStatus {
 
 export function formatToldNurseLabel(rawInitials?: string): string {
   const trimmed = (rawInitials || '').trim();
-  if (!trimmed) return 'Told RN';
+  if (!trimmed) return l10n('Told RN');
 
   const rnParenMatch = trimmed.match(/^RN\s*\(([^)]+)\)$/i);
   if (rnParenMatch && rnParenMatch[1].trim()) {
-    return `Told RN (${rnParenMatch[1].trim()})`;
+    return l10n("Told RN ({{p1}})", { p1: rnParenMatch[1].trim() });
   }
 
   if (/^RN$/i.test(trimmed)) {
-    return 'Told RN';
+    return l10n('Told RN');
   }
 
   if (/^RN\b/i.test(trimmed) || trimmed.toLowerCase().includes('rn')) {
-    return `Told ${trimmed}`;
+    return l10n("Told {{p1}}", { p1: trimmed });
   }
 
-  return `Told RN (${trimmed})`;
+  return l10n("Told RN ({{p1}})", { p1: trimmed });
 }
 
 export function getResidentStatus(
@@ -100,21 +101,21 @@ export function getResidentStatus(
   if (isBmOverdue) {
     const bmPart =
       hoursSinceBM !== null && hoursSinceBM !== undefined
-        ? `BM ${hoursSinceBM}h`
-        : `BM >${bmHoursMax}h`;
+        ? l10n("BM {{p1}}h", { p1: hoursSinceBM })
+        : l10n("BM >{{p1}}h", { p1: bmHoursMax });
     clinicalItems.push(bmPart);
     shortClinicalItems.push(bmPart);
   }
 
   if (codesCount > 0) {
-    const codePart = `${codesCount} ${codesCount === 1 ? 'change' : 'changes'}`;
+    const codePart = l10n('Changes: {{count}}', { count: codesCount });
     clinicalItems.push(codePart);
     shortClinicalItems.push(codePart);
   }
 
   if (isLowFluid) {
-    clinicalItems.push(`${fluid} mL fluid`);
-    shortClinicalItems.push('Low fluid');
+    clinicalItems.push(l10n('{{volume}} mL fluid', { volume: fluid ?? 0 }));
+    shortClinicalItems.push(l10n('Low fluid'));
   }
 
   let clinicalLevel: ClinicalConcernLevel = 'routine';
@@ -126,9 +127,9 @@ export function getResidentStatus(
     clinicalLevel = 'watch';
   }
 
-  const clinicalSummary = clinicalItems.length > 0 ? clinicalItems.join(' · ') : 'Routine';
+  const clinicalSummary = clinicalItems.length > 0 ? clinicalItems.join(' · ') : l10n('Routine');
   const clinicalShortSummary =
-    shortClinicalItems.length > 0 ? shortClinicalItems.join(' · ') : 'Routine';
+    shortClinicalItems.length > 0 ? shortClinicalItems.join(' · ') : l10n('Routine');
 
   // 2. Build independent nurse notification profile
   const isUrgent = tier === 3 || isBmOverdue;
@@ -145,12 +146,12 @@ export function getResidentStatus(
     nurseShortLabel = formatted;
   } else if (isUrgent) {
     nurseState = 'notify_now';
-    nurseLabel = 'Notify RN now';
-    nurseShortLabel = 'Notify RN now';
+    nurseLabel = l10n('Notify RN now');
+    nurseShortLabel = l10n('Notify RN now');
   } else if (tier === 2) {
     nurseState = 'notify_shift';
-    nurseLabel = 'Notify RN';
-    nurseShortLabel = 'Notify RN';
+    nurseLabel = l10n('Notify RN');
+    nurseShortLabel = l10n('Notify RN');
   }
 
   return {

@@ -1,3 +1,5 @@
+import { speechLocaleFor } from '../utils/translator';
+import { i18n, l10n } from '../utils/localization';
 import React, { useState } from 'react';
 import {
   Eye,
@@ -94,7 +96,7 @@ export const StopAndWatchIconBadge: React.FC<StopAndWatchIconBadgeProps> = ({
   onClick,
   customTiers,
   interactive = true,
-  language = 'en',
+  language = i18n.language,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const config = getCodeConfig(codeId, customTiers);
@@ -145,7 +147,7 @@ export const StopAndWatchIconBadge: React.FC<StopAndWatchIconBadgeProps> = ({
     }
   };
 
-  const plainTitle = `${config?.plainLabel || config?.shortLabel || codeId} (${tierMeta.heading}): ${config?.plainLanguageDescription || ''}`;
+  const plainTitle = [l10n(config?.plainLabel || config?.shortLabel || codeId), l10n(tierMeta.heading), l10n(config?.plainLanguageDescription || '')].filter(Boolean).join(' · ');
 
   return (
     <>
@@ -180,9 +182,9 @@ export const StopAndWatchIconBadge: React.FC<StopAndWatchIconBadgeProps> = ({
               e.stopPropagation();
               onRemove();
             }}
-            className="hover:bg-black/10 rounded-full p-0.5 cursor-pointer ml-0.5 -mr-0.5"
-            title="Remove flag"
-            aria-label={`Remove ${config?.plainLabel || codeId}`}
+            className="hover:bg-black/10 rounded-full p-0.5 cursor-pointer ms-0.5 -me-0.5"
+            title={l10n("Remove flag")}
+            aria-label={l10n("Remove {{p1}}", { p1: config?.plainLabel || codeId })}
           >
             <X className="w-3 h-3" />
           </button>
@@ -217,7 +219,7 @@ export const StopAndWatchDetailModal: React.FC<StopAndWatchDetailModalProps> = (
   const handleSpeak = () => {
     if (!('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel();
-    const textToRead = `${config.plainLabel}. ${config.plainLanguageDescription}. Required action: ${tierMeta.actionSummary}`;
+    const textToRead = [l10n(config.plainLabel), l10n(config.plainLanguageDescription), l10n(tierMeta.actionSummary)].join(". ");
     const utterance = new SpeechSynthesisUtterance(textToRead);
     window.speechSynthesis.speak(utterance);
   };
@@ -240,14 +242,14 @@ export const StopAndWatchDetailModal: React.FC<StopAndWatchDetailModalProps> = (
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-mono font-bold bg-white/80 px-1.5 py-0.2 rounded border border-slate-300">
-                  Code {config.letter}
+                  {l10n("Code") + " "}{config.letter}
                 </span>
                 <span className={`text-[10px] font-bold px-2 py-0.2 rounded-full uppercase tracking-wider ${tierMeta.badgeClass}`}>
-                  {tierMeta.name}
+                  {l10n(tierMeta.name)}
                 </span>
               </div>
               <h3 className="text-base font-bold text-slate-900 mt-0.5">
-                {config.plainLabel || config.label}
+                {l10n(config.plainLabel || config.label)}
               </h3>
             </div>
           </div>
@@ -256,14 +258,14 @@ export const StopAndWatchDetailModal: React.FC<StopAndWatchDetailModalProps> = (
             <button
               onClick={handleSpeak}
               className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/60 cursor-pointer transition-colors"
-              title="Listen to explanation"
+              title={l10n("Listen to explanation")}
             >
               <Volume2 className="w-4 h-4" />
             </button>
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/60 cursor-pointer transition-colors"
-              title="Close"
+              title={l10n("Close")}
             >
               <X className="w-4 h-4" />
             </button>
@@ -274,25 +276,25 @@ export const StopAndWatchDetailModal: React.FC<StopAndWatchDetailModalProps> = (
         <div className="p-4 space-y-3.5 text-xs">
           <div>
             <span className="font-bold text-slate-700 uppercase tracking-wider text-[10px] block mb-1">
-              What to look for:
+              {l10n("What to look for:")}
             </span>
             <p className="text-slate-900 font-medium leading-relaxed bg-slate-50 p-2.5 rounded-lg border border-slate-200">
-              {config.plainLanguageDescription}
+              {l10n(config.plainLanguageDescription)}
             </p>
           </div>
 
           <div>
             <span className="font-bold text-slate-700 uppercase tracking-wider text-[10px] block mb-1">
-              Example care observation:
+              {l10n("Example care observation:")}
             </span>
             <p className="text-slate-700 italic bg-slate-50 p-2.5 rounded-lg border border-slate-200">
-              {config.examplePhrase}
+              {l10n(config.examplePhrase)}
             </p>
           </div>
 
           <div>
             <span className="font-bold text-slate-700 uppercase tracking-wider text-[10px] block mb-1">
-              Required Clinical Action:
+              {l10n("Required Clinical Action:")}
             </span>
             <div className={`p-2.5 rounded-lg border flex items-start gap-2 ${tierMeta.badgeBg} ${tierMeta.badgeBorder}`}>
               {tierMeta.tier === 3 ? (
@@ -303,7 +305,7 @@ export const StopAndWatchDetailModal: React.FC<StopAndWatchDetailModalProps> = (
                 <ShieldCheck className="w-4 h-4 text-sky-900 shrink-0 mt-0.5" />
               )}
               <div className="text-slate-900 leading-snug">
-                {tierMeta.actionSummary}
+                {l10n(tierMeta.actionSummary)}
               </div>
             </div>
           </div>
@@ -312,13 +314,13 @@ export const StopAndWatchDetailModal: React.FC<StopAndWatchDetailModalProps> = (
         {/* Modal Footer */}
         <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
           <span className="text-[11px] text-slate-500">
-            Tap anywhere to close · INTERACT™ Early Warning
+            {l10n("Tap anywhere to close · INTERACT™ Early Warning")}
           </span>
           <button
             onClick={onClose}
             className="px-4 py-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded-lg font-bold text-xs shadow-xs cursor-pointer transition-colors"
           >
-            Got it
+            {l10n("Got it")}
           </button>
         </div>
       </div>

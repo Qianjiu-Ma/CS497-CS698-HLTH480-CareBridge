@@ -384,7 +384,7 @@ app.post('/api/gemini/parse-handoff-stream', async (req, res) => {
   res.flushHeaders?.();
 
   // Check cache first
-  const cacheKey = `${(language || 'auto').toLowerCase()}_${(targetLanguage || 'en').toLowerCase()}_${transcript.trim().toLowerCase()}`;
+  const cacheKey = JSON.stringify([language || 'auto', targetLanguage || 'en', transcript.trim(), currentResidents, contextUtterances]);
   if (transcriptCache.has(cacheKey)) {
     const cached = transcriptCache.get(cacheKey)!;
     const totalToSheetMs = Date.now() - startTime;
@@ -555,7 +555,7 @@ app.post('/api/gemini/parse-handoff', async (req, res) => {
   const speechEndToSendMs = speechEndTime ? Math.max(0, startTime - speechEndTime) : 0;
 
   // 6. CACHE LOOKUP: Instant response for identical text
-  const cacheKey = `${(language || 'auto').toLowerCase()}_${(targetLanguage || 'en').toLowerCase()}_${transcript.trim().toLowerCase()}`;
+  const cacheKey = JSON.stringify([language || 'auto', targetLanguage || 'en', transcript.trim(), currentResidents, contextUtterances]);
   if (transcriptCache.has(cacheKey)) {
     const cached = transcriptCache.get(cacheKey)!;
     const totalToSheetMs = Date.now() - startTime;
@@ -1246,16 +1246,23 @@ app.get('/api/translate/languages', async (req, res) => {
 // Google Cloud Translation API (Advanced / v3) - High-Speed Translation + Latency Tracking
 const handleCloudTranslateV3 = async (req: express.Request, res: express.Response) => {
   const { text, sourceLang, source_language, targetLang, target_language } = req.body || {};
+  const source = sourceLang ?? source_language ?? 'auto';
+  const target = targetLang ?? target_language ?? 'en';
 
-  if (!text || typeof text !== 'string') {
+  if (typeof text !== 'string' || !text.trim() || text.length > 10_000) {
     return res.status(400).json({ error: 'Text to translate is required' });
+  }
+  const isLanguage = (value: unknown): value is string =>
+    typeof value === 'string' && /^[a-z]{2,8}(?:-[a-z0-9]{2,8})*$/i.test(value);
+  if (!isLanguage(source) || !isLanguage(target) || target === 'auto') {
+    return res.status(400).json({ error: 'Invalid translation language' });
   }
 
   try {
     const result = await translateTextV3({
       text,
-      sourceLang: sourceLang || source_language || 'auto',
-      targetLang: targetLang || target_language || 'en',
+      sourceLang: source,
+      targetLang: target,
     });
 
     // Required JSON delivery contract:

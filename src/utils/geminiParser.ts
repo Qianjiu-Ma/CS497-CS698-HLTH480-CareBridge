@@ -39,12 +39,7 @@ export interface GoogleTranslateResult {
   targetLanguage: string;
   translationLatencyMs: number;
   confidence: 'high' | 'medium' | 'low';
-  provider:
-    | 'google-cloud-translation-v3'
-    | 'google-cloud-translation-rest'
-    | 'google-translate-service'
-    | 'google-translate-official'
-    | 'clinical-dictionary';
+  provider: string;
   cached?: boolean;
 }
 
@@ -58,116 +53,18 @@ export async function translateWithGoogleTranslate(
   sourceLang: string = 'auto',
   targetLang: string = 'en'
 ): Promise<GoogleTranslateResult> {
-  const trimmed = text ? text.trim() : '';
-  if (!trimmed) {
-    return {
-      translatedText: '',
-      detectedSourceLanguage: sourceLang || 'en',
-      targetLanguage: targetLang,
-      translationLatencyMs: 0,
-      confidence: 'high',
-      provider: 'google-cloud-translation-v3',
-    };
-  }
-
-  const detected = detectLanguage(trimmed);
-  const effectiveSource = sourceLang === 'auto' ? 'auto' : sourceLang || detected;
-
-  // If text is already strictly English and target is English
-  if (effectiveSource === 'en' && targetLang === 'en' && detected === 'en') {
-    return {
-      translatedText: trimmed,
-      detectedSourceLanguage: 'en',
-      targetLanguage: 'en',
-      translationLatencyMs: 1,
-      confidence: 'high',
-      provider: 'google-cloud-translation-v3',
-    };
-  }
-
-  const clientStart = performance.now();
-
-  // 1. Primary: Server proxy calling official Google Cloud Translation API v3
-  try {
-    const res = await fetch('/api/translate/google', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text: trimmed,
-        sourceLang: effectiveSource,
-        targetLang,
-      }),
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      const translatedText = (data.translated_text || data.translatedText || '').trim();
-      const detectedSourceLanguage =
-        data.detected_source_language || data.detectedSourceLanguage || effectiveSource;
-      const latencyMs =
-        typeof data.translation_latency_ms === 'number'
-          ? data.translation_latency_ms
-          : Math.max(1, Math.round(performance.now() - clientStart));
-
-      if (translatedText) {
-        return {
-          translatedText,
-          detectedSourceLanguage,
-          targetLanguage: data.target_language || targetLang,
-          translationLatencyMs: latencyMs,
-          confidence: 'high',
-          provider: data.provider || 'google-cloud-translation-v3',
-          cached: Boolean(data.cached),
-        };
-      }
-    }
-  } catch (err) {
-    console.warn('Backend Cloud Translation v3 call failed, trying direct fallback:', err);
-  }
-
-  // 2. Secondary: Direct browser call to Google Translate endpoint
-  try {
-    const sl = effectiveSource === 'auto' ? 'auto' : effectiveSource;
-    const tl = targetLang;
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(sl)}&tl=${encodeURIComponent(tl)}&dt=t&q=${encodeURIComponent(trimmed)}`;
-    const res = await fetch(url);
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data?.[0])) {
-        const translatedText = data[0].map((item: any) => item?.[0] || '').join('');
-        const detectedSourceLanguage = data?.[2] || effectiveSource;
-        const latencyMs = Math.max(1, Math.round(performance.now() - clientStart));
-        if (translatedText.trim()) {
-          return {
-            translatedText: translatedText.trim(),
-            detectedSourceLanguage,
-            targetLanguage: targetLang,
-            translationLatencyMs: latencyMs,
-            confidence: 'high',
-            provider: 'google-translate-official',
-          };
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('Direct Google Translate API call failed, using clinical fallback:', err);
-  }
-
-  // 3. Graceful fallback to clinical dictionary and bidirectional translator
-  const fallback = await translateBidirectional(trimmed, effectiveSource, targetLang);
+  const start = performance.now();
+  const result = await translateBidirectional(text, sourceLang, targetLang);
   return {
-    translatedText: fallback.translatedText || trimmed,
-    detectedSourceLanguage: fallback.detectedSourceLanguage || fallback.sourceLang || effectiveSource,
-    targetLanguage: targetLang,
-    translationLatencyMs:
-      fallback.translationLatencyMs ?? Math.max(1, Math.round(performance.now() - clientStart)),
-    confidence: fallback.confidence || 'medium',
-    provider: 'clinical-dictionary',
+    translatedText: result.translatedText.trim(),
+    detectedSourceLanguage: result.detectedSourceLanguage || result.sourceLang,
+    targetLanguage: result.targetLang,
+    translationLatencyMs: result.translationLatencyMs ?? Math.round(performance.now() - start),
+    confidence: result.confidence,
+    provider: result.provider || (result.status === 'unavailable' ? 'unavailable' : 'original'),
+    cached: result.cached,
   };
 }
-
-// 6. CLIENT-SIDE UTTERANCE CACHE: Instant response (<1ms) for repeated phrases
-const clientParseCache = new Map<string, ParseResult>();
 
 export interface StreamCallbacks {
   onFirstToken?: (timeToFirstTokenMs: number) => void;
@@ -185,19 +82,8 @@ export async function parseTranscriptToHandoffStream(
   targetLanguage?: string
 ): Promise<ParseResult> {
   const detected = detectLanguage(transcript);
-  const effectiveLang = language && language !== 'auto' && language !== 'en' ? language : detected;
-  const chosenTarget = targetLanguage || (effectiveLang.startsWith('en') ? 'tl' : 'en');
-
-  // Check client cache
-  const cacheKey = `${effectiveLang.toLowerCase()}_${chosenTarget.toLowerCase()}_${transcript.trim().toLowerCase()}`;
-  if (clientParseCache.has(cacheKey)) {
-    const cached = clientParseCache.get(cacheKey)!;
-    if (callbacks?.onFirstToken) callbacks.onFirstToken(1);
-    if (callbacks?.onEarlyTranslation && cached.translatedTranscript) {
-      callbacks.onEarlyTranslation(cached.translatedTranscript);
-    }
-    return cached;
-  }
+  const effectiveLang = language === 'auto' ? 'auto' : language === 'en' ? detected : language || detected;
+  const chosenTarget = targetLanguage || 'en';
 
   // 1. OFFICIAL GOOGLE TRANSLATE API PRE-TRANSLATION:
   // Before sending data to Gemini, perform high-fidelity translation using Google Translate API.
@@ -294,7 +180,7 @@ export async function parseTranscriptToHandoffStream(
       }
 
       if (finalResult) {
-        clientParseCache.set(cacheKey, finalResult);
+
         return finalResult;
       }
     }
@@ -326,14 +212,8 @@ export async function parseTranscriptToHandoff(
   pretranslatedLatencyMs?: number
 ): Promise<ParseResult> {
   const detected = detectLanguage(transcript);
-  const effectiveLang = language && language !== 'auto' && language !== 'en' ? language : detected;
-  const chosenTarget = targetLanguage || (effectiveLang.startsWith('en') ? 'tl' : 'en');
-
-  // Check client cache
-  const cacheKey = `${effectiveLang.toLowerCase()}_${chosenTarget.toLowerCase()}_${transcript.trim().toLowerCase()}`;
-  if (clientParseCache.has(cacheKey)) {
-    return clientParseCache.get(cacheKey)!;
-  }
+  const effectiveLang = language === 'auto' ? 'auto' : language === 'en' ? detected : language || detected;
+  const chosenTarget = targetLanguage || 'en';
 
   // 1. OFFICIAL GOOGLE CLOUD TRANSLATION v3 PRE-TRANSLATION:
   // Ensure we have a high-quality, locale-accurate translation before calling Gemini
@@ -385,7 +265,7 @@ export async function parseTranscriptToHandoff(
           googleTranslateRes?.provider,
           effectiveLatencyMs
         );
-        clientParseCache.set(cacheKey, result);
+
         return result;
       }
     }
@@ -1069,7 +949,7 @@ async function localDeterministicParser(
       englishText = transcript.trim();
     } else {
       const gRes = await translateWithGoogleTranslate(transcript, language, 'en');
-      englishText = (gRes.translatedText || transcript).trim();
+      englishText = gRes.translatedText.trim();
       translationProvider = gRes.provider;
       detectedSourceLanguage = gRes.detectedSourceLanguage || detectedSourceLanguage;
       translationLatencyMs = gRes.translationLatencyMs;
@@ -1080,13 +960,14 @@ async function localDeterministicParser(
   let displayTranslation = englishText;
   if (targetLanguage && targetLanguage !== 'en') {
     const tRes = await translateWithGoogleTranslate(transcript, language, targetLanguage);
-    displayTranslation = tRes.translatedText || englishText;
+    displayTranslation = tRes.translatedText;
     translationProvider = tRes.provider;
     detectedSourceLanguage = tRes.detectedSourceLanguage || detectedSourceLanguage;
     translationLatencyMs = tRes.translationLatencyMs;
   }
 
   // 3. Segment the clean English translation by resident / room / unit note
+  if (!englishText) openQuestions.push('Translation unavailable. Review the original report and enter the findings manually.');
   const segmented = segmentTranslatedHandoffByResident(englishText, updated);
   let anythingElse = segmented.anythingElse;
 
@@ -1220,12 +1101,13 @@ async function localDeterministicParser(
   }
 
   return {
-    translatedTranscript: displayTranslation || transcript,
+    translatedTranscript: displayTranslation,
     sourceLanguage: language,
     targetLanguage: targetLanguage || 'en',
     detectedSourceLanguage,
     translationLatencyMs,
-    translationConfidence: 'high',
+    translationConfidence: englishText && displayTranslation ? 'medium' : 'low',
+    needsTranslationCheck: !englishText || !displayTranslation,
     updatedRows: updated,
     anythingElse,
     openQuestions,
@@ -1318,7 +1200,7 @@ export async function clinicalTranscribeSingleResident(
   const effectiveTimestamp =
     timestamp || new Date().toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
   const detected = detectLanguage(rawTranscript);
-  const effectiveLang = sourceLang && sourceLang !== 'auto' ? sourceLang : detected;
+  const effectiveLang = sourceLang === 'auto' ? 'auto' : sourceLang === 'en' ? detected : sourceLang || detected;
 
   // 1. Ensure clean English translation so structured requirements and checklist auto-fill accurately
   let englishText = (pretranslatedEnglish || '').trim();
@@ -1328,13 +1210,14 @@ export async function clinicalTranscribeSingleResident(
     } else {
       try {
         const gRes = await translateWithGoogleTranslate(rawTranscript, effectiveLang, 'en');
-        englishText = (gRes.translatedText || rawTranscript).trim();
+        englishText = gRes.translatedText.trim();
       } catch {
-        englishText = rawTranscript.trim();
+        englishText = '';
       }
     }
   }
 
+  if (!englishText) throw new Error('Translation unavailable');
   const dyn = extractDynamicRequirementsFromEnglish(englishText);
 
   try {

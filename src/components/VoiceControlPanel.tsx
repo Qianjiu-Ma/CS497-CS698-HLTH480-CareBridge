@@ -1,4 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { SelectPopover } from './SelectPopover';
+import { ClinicalText } from './ClinicalText';
+import { l10n, uiLanguageName } from '../utils/localization';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Mic,
   MicOff,
@@ -32,13 +35,13 @@ import {
   ExtractedResidentHandoff,
   ClinicalTranscriptionRecord,
 } from '../types/handoff';
-import { translateBidirectional, detectLanguage } from '../utils/translator';
+import { translateBidirectional, detectLanguage, speechLocaleFor } from '../utils/translator';
 import {
   clinicalTranscribeSingleResident,
   mergeCareRequirementsIntoRow,
 } from '../utils/geminiParser';
 import { StopAndWatchIconBadge, findCodeIdFromFlagText } from './StopAndWatchIconBadge';
-import { InterfaceLanguage } from '../utils/uiTranslations';
+import type { InterfaceLanguage } from '../utils/localization';
 import { Button } from './WorkspaceUi';
 
 interface VoiceControlPanelProps {
@@ -216,7 +219,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
   const untranslatedBufferRef = useRef('');
   const silenceTimerRef = useRef<any>(null);
   const timerIntervalRef = useRef<any>(null);
-  const typingDebounceTimerRef = useRef<any>(null);
+
   const onProcessTranscriptRef = useRef(onProcessTranscript);
   const silenceBufferSecondsRef = useRef(silenceBufferSeconds);
   const scenarioDropdownRef = useRef<HTMLDivElement | null>(null);
@@ -290,11 +293,6 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
   useEffect(() => {
     const prevKey = activeScopeKeyRef.current;
     if (prevKey === effectiveScopeKey) return;
-
-    if (typingDebounceTimerRef.current) {
-      clearTimeout(typingDebounceTimerRef.current);
-      typingDebounceTimerRef.current = null;
-    }
 
     // Stop active speech recognition before switching scope to prevent cross-resident dictation
     if (isListeningRef.current) {
@@ -476,21 +474,12 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
   const processAndTranslate = useCallback(
     async (text: string, sourceLang: string, targetLang: string) => {
       if (!text.trim()) return;
+      const scopeKey = activeScopeKeyRef.current;
+      const isCurrentPreview = () => activeScopeKeyRef.current === scopeKey &&
+        selectedLanguageRef.current === sourceLang && targetLanguageRef.current === targetLang;
 
-      // Single-resident isolated path: translate live and wait for explicit Extract / Review
-      if (effectiveScopeRef.current === 'resident' && focusedRowRef.current) {
-        setIsTranslating(true);
-        try {
-          const trans = await translateBidirectional(text.trim(), sourceLang, targetLang);
-          if (trans?.translatedText) setLiveTranslationText(trans.translatedText);
-          if (trans?.detectedSourceLanguage) setDetectedSourceLanguage(trans.detectedSourceLanguage);
-        } catch (err) {
-          console.warn('Single-resident translation notice:', err);
-        } finally {
-          setIsTranslating(false);
-        }
-        return;
-      }
+      // Resident dictation waits for explicit translation or extraction.
+      if (effectiveScopeRef.current === 'resident' && focusedRowRef.current) return;
 
       setIsTranslating(true);
 
@@ -514,7 +503,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
           sourceLang,
           {
             onEarlyTranslation: (early) => {
-              setLiveTranslationText(early);
+              if (isCurrentPreview()) setLiveTranslationText(early);
               setSegments((prev) =>
                 prev.map((s) =>
                   s.id === segId ? { ...s, translatedText: early, translatedEnglish: early } : s
@@ -527,9 +516,9 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
         );
 
         if (result && result.translatedTranscript) {
-          setLiveTranslationText(result.translatedTranscript);
+          if (isCurrentPreview()) setLiveTranslationText(result.translatedTranscript);
           if (result.detectedSourceLanguage) {
-            setDetectedSourceLanguage(result.detectedSourceLanguage);
+            if (isCurrentPreview()) setDetectedSourceLanguage(result.detectedSourceLanguage);
           }
           setSegments((prev) =>
             prev.map((s) =>
@@ -548,9 +537,9 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
           );
         } else {
           const trans = await translateBidirectional(text.trim(), sourceLang, targetLang);
-          setLiveTranslationText(trans.translatedText);
+          if (isCurrentPreview()) setLiveTranslationText(trans.translatedText);
           if (trans.detectedSourceLanguage) {
-            setDetectedSourceLanguage(trans.detectedSourceLanguage);
+            if (isCurrentPreview()) setDetectedSourceLanguage(trans.detectedSourceLanguage);
           }
           setSegments((prev) =>
             prev.map((s) =>
@@ -558,7 +547,8 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                 ? {
                     ...s,
                     translatedText: trans.translatedText,
-                    translatedEnglish: trans.translatedText,
+                    translatedEnglish: targetLang === 'en' ? trans.translatedText : '',
+                    needsCheck: trans.status === 'unavailable',
                     isTranslating: false,
                     confidence: trans.confidence,
                     detectedSourceLanguage: trans.detectedSourceLanguage,
@@ -571,14 +561,15 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
         console.error('Translation error:', err);
         try {
           const trans = await translateBidirectional(text.trim(), sourceLang, targetLang);
-          setLiveTranslationText(trans.translatedText);
+          if (isCurrentPreview()) setLiveTranslationText(trans.translatedText);
           setSegments((prev) =>
             prev.map((s) =>
               s.id === segId
                 ? {
                     ...s,
                     translatedText: trans.translatedText,
-                    translatedEnglish: trans.translatedText,
+                    translatedEnglish: targetLang === 'en' ? trans.translatedText : '',
+                    needsCheck: trans.status === 'unavailable',
                     isTranslating: false,
                     detectedSourceLanguage: trans.detectedSourceLanguage,
                   }
@@ -715,53 +706,34 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
     };
   }, [stopAudioAnalysis, flushFinalBuffer, selectedLanguage, getLanguageByCode]);
 
-  const handleLanguageChange = (newLangCode: string) => {
-    setSelectedLanguage(newLangCode);
-    selectedLanguageRef.current = newLangCode;
-    const currentLangObj = getLanguageByCode(newLangCode);
-    const newSpeechCode = currentLangObj.code === 'auto' ? 'en-CA' : currentLangObj.speechCode;
-
-    if (recognitionRef.current) {
-      recognitionRef.current.lang = newSpeechCode;
-
-      if (isListeningRef.current) {
-        flushFinalBuffer();
-        try {
-          recognitionRef.current.abort();
-        } catch {
-          // ignore
-        }
-        setTimeout(() => {
-          if (isListeningRef.current && recognitionRef.current) {
-            try {
-              recognitionRef.current.lang = newSpeechCode;
-              recognitionRef.current.start();
-            } catch (e) {
-              console.warn('Restart after language change:', e);
-            }
-          }
-        }, 150);
-      }
+  const handleLanguageChange = (language: string) => {
+    // Flush buffered speech while its original recognition locale is still selected.
+    if (isListeningRef.current) {
+      flushFinalBuffer();
+      isListeningRef.current = false;
+      setIsListening(false);
+      try { recognitionRef.current?.abort(); } catch { /* recognition already ended */ }
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      stopAudioAnalysis();
     }
+    setSelectedLanguage(language);
+    selectedLanguageRef.current = language;
+    setLiveTranslationText('');
+    setDetectedSourceLanguage(null);
   };
 
   const handleSwapLanguages = () => {
-    const prevSource = selectedLanguage;
-    const prevTarget = targetLanguage;
-
-    handleLanguageChange(prevTarget);
-    setTargetLanguage(prevSource);
-    targetLanguageRef.current = prevSource;
-
-    if (liveTranslationText) {
-      const prevInput = inputText;
-      setInputText(liveTranslationText);
-      accumulatedTranscriptRef.current = liveTranslationText;
-      setLiveTranslationText(prevInput);
-    }
+    handleLanguageChange(targetLanguage);
+    setTargetLanguage(selectedLanguage);
+    targetLanguageRef.current = selectedLanguage;
   };
 
   const toggleListening = () => {
+    if (!isListening && selectedLanguageRef.current === 'auto') {
+      setIsExpanded(true);
+      setErrorMessage('Choose a speaking language before using the microphone. Auto-detect is available for typed translation.');
+      return;
+    }
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
@@ -827,7 +799,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
           setIsListening(true);
           isListeningRef.current = true;
         } else {
-          setErrorMessage(`Could not start listening: ${err.message || 'Speech initialization error'}`);
+          setErrorMessage('Could not start speech recognition. Check your microphone and try again.');
           setIsListening(false);
           isListeningRef.current = false;
         }
@@ -835,77 +807,40 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const val = e.target.value;
-    setInputText(val);
+  const handleInputChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = event.target.value;
+    setInputText(value);
+    setLiveTranslationText('');
+    setDetectedSourceLanguage(null);
     setAppliedResidentNotice(null);
-    accumulatedTranscriptRef.current = val;
-
-    if (typingDebounceTimerRef.current) {
-      clearTimeout(typingDebounceTimerRef.current);
-    }
-
-    if (!val.trim()) {
-      setLiveTranslationText('');
-      setDetectedSourceLanguage(null);
-      return;
-    }
-
-    let effectiveSrc = selectedLanguage;
-    if (selectedLanguage === 'en') {
-      const detected = detectLanguage(val);
-      if (detected !== 'en' && detected !== selectedLanguage) {
-        effectiveSrc = detected;
-        handleLanguageChange(detected);
-      }
-    }
-
-    typingDebounceTimerRef.current = setTimeout(async () => {
-      try {
-        setIsTranslating(true);
-        const res = await translateBidirectional(val.trim(), effectiveSrc, targetLanguage);
-        if (res && res.translatedText) {
-          setLiveTranslationText(res.translatedText);
-          if (res.detectedSourceLanguage) {
-            setDetectedSourceLanguage(res.detectedSourceLanguage);
-          }
-        }
-      } catch (err) {
-        console.warn('Debounced translation preview note:', err);
-      } finally {
-        setIsTranslating(false);
-      }
-    }, 500);
+    accumulatedTranscriptRef.current = value;
   };
 
   // Extract either for the isolated active resident or across the unit
   const handleManualSubmit = async () => {
-    const raw = inputText.trim() || liveTranslationText.trim();
+    const raw = inputText.trim();
     if (!raw) return;
 
     if (effectiveScope === 'resident' && focusedRow) {
       setIsExtractingSingle(true);
       setAppliedResidentNotice(null);
       try {
-        const englishHint =
-          targetLanguage === 'en' && liveTranslationText.trim()
-            ? liveTranslationText.trim()
-            : selectedLanguage === 'en' && inputText.trim()
-            ? inputText.trim()
-            : undefined;
-
+        const scopeKey = activeScopeKeyRef.current;
         const res = await clinicalTranscribeSingleResident(
           raw,
           `${focusedRow.residentName} (Room ${focusedRow.room})`,
           staffStamp,
           new Date().toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }),
-          selectedLanguage,
-          englishHint
+          selectedLanguage
         );
-        setPendingSingleRecord(res);
+        if (activeScopeKeyRef.current === scopeKey && accumulatedTranscriptRef.current.trim() === raw) {
+          setPendingSingleRecord(res);
+        }
       } catch (err) {
         console.error('Single-resident extraction error:', err);
-        setErrorMessage('Could not extract note. Try again or enter directly below.');
+        setErrorMessage(err instanceof Error && err.message === 'Translation unavailable'
+          ? 'Translation unavailable. Review the original report and enter the findings manually.'
+          : 'Could not extract note. Try again or enter directly below.');
       } finally {
         setIsExtractingSingle(false);
       }
@@ -988,7 +923,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
       },
     });
 
-    setAppliedResidentNotice(`Saved to Rm ${focusedRow.room} · ${focusedRow.residentName}`);
+    setAppliedResidentNotice(l10n('Saved to room {{room}} · {{resident}}', { room: focusedRow.room, resident: focusedRow.residentName }));
     setPendingSingleRecord(null);
     setInputText('');
     setLiveTranslationText('');
@@ -998,15 +933,19 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
     saveStoredDrafts(draftsByScopeRef.current);
   };
 
-  const handleRetranslate = (segment: TranscriptSegment) => {
-    setSegments((prev) =>
-      prev.map((s) => (s.id === segment.id ? { ...s, isTranslating: true, needsCheck: false } : s))
-    );
-    processAndTranslate(
-      segment.originalText,
-      segment.language,
-      segment.targetLanguage || targetLanguageRef.current
-    );
+  const handleRetranslate = async (segment: TranscriptSegment) => {
+    const target = segment.targetLanguage || targetLanguageRef.current;
+    setSegments((previous) => previous.map((item) => item.id === segment.id ? { ...item, isTranslating: true } : item));
+    const result = await translateBidirectional(segment.originalText, segment.language, target);
+    setSegments((previous) => previous.map((item) => item.id === segment.id ? {
+      ...item,
+      translatedText: result.status === 'machine' || result.status === 'phrase' ? result.translatedText : '',
+      translatedEnglish: '',
+      targetLanguage: target,
+      detectedSourceLanguage: result.detectedSourceLanguage,
+      isTranslating: false,
+      needsCheck: result.status === 'unavailable',
+    } : item));
   };
 
   const handleSpeakText = (text: string, langCode: string) => {
@@ -1014,8 +953,9 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
     window.speechSynthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance(text);
-    const langObj = getLanguageByCode(langCode);
-    if (langObj && langObj.code !== 'auto') utterance.lang = langObj.speechCode;
+    const speechLocale = speechLocaleFor(langCode === 'auto' ? (detectedSourceLanguage || detectLanguage(text)) : langCode);
+    if (!speechLocale) return;
+    utterance.lang = speechLocale;
 
     utterance.onstart = () => setSpeaking(true);
     utterance.onend = () => setSpeaking(false);
@@ -1099,6 +1039,13 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
     return `${mins}:${s < 10 ? '0' : ''}${s}`;
   };
 
+  const languageGroups = useMemo(() => [
+    { label: l10n('LTC Priority Languages'), options: priorityLanguages.map(({ code }) => ({ value: code, label: uiLanguageName(code) })) },
+    ...(otherLanguages.length ? [{
+      label: l10n('All Cloud Languages ({{p1}})', { p1: otherLanguages.length }),
+      options: otherLanguages.map(({ code }) => ({ value: code, label: uiLanguageName(code) })),
+    }] : []),
+  ], [priorityLanguages, otherLanguages, interfaceLanguage]);
   const currentSourceObj = getLanguageByCode(selectedLanguage);
   const currentTargetObj = getLanguageByCode(targetLanguage);
   const hasActionItems =
@@ -1121,8 +1068,8 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <Button variant={isListening ? 'danger' : 'primary'} onClick={toggleListening}>
-            {isListening ? <><MicOff /> Stop ({formatTimer(secondsListening)})</> : <><Mic />
-              {effectiveScope === 'resident' && focusedRow ? 'Report · Room ' + focusedRow.room : 'Report · All residents'}
+            {isListening ? <><MicOff />{l10n('Stop ({{time}})', { time: formatTimer(secondsListening) })}</> : <><Mic />
+              {effectiveScope === 'resident' && focusedRow ? l10n('Report · Room {{room}}', { room: focusedRow.room }) : l10n("Report · All residents")}
             </>}
           </Button>
 
@@ -1147,7 +1094,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                   style={{ transform: `scaleY(${Math.max(25, Math.min(100, audioLevel * 1.7)) / 100})` }}
                 />
               </div>
-              <span className="text-[11px] font-medium text-rose-800">Listening</span>
+              <span className="text-[11px] font-medium text-rose-800">{l10n("Listening")}</span>
             </div>
           )}
 
@@ -1157,7 +1104,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
           <div className="relative" ref={scenarioDropdownRef}>
             <Button id="report-more-trigger" aria-expanded={activeScenarioOpen} aria-controls="report-more-panel"
               onClick={() => setActiveScenarioOpen(!activeScenarioOpen)}>
-              <SlidersHorizontal /> More
+              <SlidersHorizontal />{" " + l10n("More")}
             </Button>
             {activeScenarioOpen && (
               <div className="cb-panel cb-report-menu cb-motion-popover" id="report-more-panel">
@@ -1168,14 +1115,14 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                     requestAnimationFrame(() => {
                       if (!isExpanded) document.getElementById('handoff-report-input')?.focus();
                     });
-                  }}><FileText /> {isExpanded ? 'Hide input' : 'Type note'}</Button>
+                  }}><FileText /> {isExpanded ? l10n("Hide input") : l10n("Type note")}</Button>
                 <div className="cb-report-options">
           {/* Scope Toggle (only shown when inside an individual resident file) */}
           {focusedRow && (
             <div
               className="inline-flex items-center p-0.5 bg-slate-100 rounded-xl text-xs"
               role="group"
-              aria-label="Report scope"
+              aria-label={l10n("Report scope")}
             >
               <button
                 type="button"
@@ -1187,7 +1134,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Rm <span className="font-mono tabular-nums">{focusedRow.room}</span>
+                {l10n("Rm") + " "}<span className="font-mono tabular-nums">{focusedRow.room}</span>
               </button>
               <button
                 type="button"
@@ -1202,38 +1149,16 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                All
+                {l10n("All")}
               </button>
             </div>
           )}
 
           {/* Compact Speaking Language Selector */}
-          <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 text-xs gap-1.5">
-            <Languages className="w-3.5 h-3.5 text-teal-700 shrink-0" />
-            <select
-              value={selectedLanguage}
-              onChange={(e) => handleLanguageChange(e.target.value)}
-              className="bg-transparent font-medium text-slate-800 focus:outline-none cursor-pointer max-w-[140px]"
-              aria-label="Speaking language"
-            >
-              <option value="auto">Auto-Detect</option>
-              <optgroup label="LTC Priority Languages">
-                {priorityLanguages.map((lang) => (
-                  <option key={`src-p-${lang.code}`} value={lang.code}>
-                    {lang.name}
-                  </option>
-                ))}
-              </optgroup>
-              {otherLanguages.length > 0 && (
-                <optgroup label={`All Cloud Languages (${otherLanguages.length})`}>
-                  {otherLanguages.map((lang) => (
-                    <option key={`src-o-${lang.code}`} value={lang.code}>
-                      {lang.name}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <SelectPopover label={l10n('Speaking language')} value={selectedLanguage} onChange={handleLanguageChange}
+              className="max-w-44" icon={<Languages aria-hidden="true" />}
+              options={[{ value: 'auto', label: l10n('Auto-Detect') }]} groups={languageGroups} />
             {isLoadingLanguages && (
               <Loader2 className="w-3 h-3 cb-pending text-slate-400" />
             )}
@@ -1247,11 +1172,11 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                         setActiveScenarioOpen(false);
                         onOpenGuide();
                       }}
-                      className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-purple-50 transition-colors flex items-center justify-between gap-2 cursor-pointer"
+                      className="w-full text-start px-2.5 py-2 rounded-lg hover:bg-purple-50 transition-colors flex items-center justify-between gap-2 cursor-pointer"
                     >
                       <span className="inline-flex items-center gap-2 text-xs font-semibold text-purple-950">
                         <BookOpen className="w-3.5 h-3.5 text-purple-700" />
-                        <span>Stop &amp; Watch clinical guide</span>
+                        <span>{l10n("Stop & Watch clinical guide")}</span>
                       </span>
                       <ArrowRight className="w-3.5 h-3.5 text-purple-600" />
                     </button>
@@ -1260,21 +1185,21 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                 )}
 
                 <div className="text-[11px] font-semibold text-slate-500 px-2 py-1">
-                  Sample shift scenarios
+                  {l10n("Sample shift scenarios")}
                 </div>
                 {DEMO_SCENARIOS.map((sc) => (
                   <button
                     key={sc.id}
                     type="button"
                     onClick={() => handleSelectScenario(sc)}
-                    className="w-full text-left p-2 rounded-lg hover:bg-slate-50 transition-colors group cursor-pointer"
+                    className="w-full text-start p-2 rounded-lg hover:bg-slate-50 transition-colors group cursor-pointer"
                   >
                     <div className="text-xs font-semibold text-slate-900 group-hover:text-teal-800 flex items-center justify-between">
-                      <span>{sc.title}</span>
+                      <span>{l10n(sc.title)}</span>
                       <Play className="w-3 h-3 text-teal-600 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
                     <div className="text-[11px] text-slate-500 leading-snug mt-0.5">
-                      {sc.description}
+                      {l10n(sc.description)}
                     </div>
                   </button>
                 ))}
@@ -1291,7 +1216,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
             <div className="bg-amber-50 border border-amber-200 text-amber-950 rounded-xl p-3 text-xs flex items-start justify-between gap-3">
               <div className="flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-                <span>{errorMessage}</span>
+                <span>{l10n(errorMessage || "")}</span>
               </div>
               <button
                 type="button"
@@ -1331,8 +1256,8 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-semibold text-slate-800">
                     {effectiveScope === 'resident' && focusedRow
-                      ? `Note for Rm ${focusedRow.room} · ${focusedRow.residentName}`
-                      : `Shift report (${currentSourceObj.name})`}
+                      ? l10n("Note for Rm {{p1}} · {{p2}}", { p1: focusedRow.room, p2: focusedRow.residentName })
+                      : l10n("Shift report ({{p1}})", { p1: currentSourceObj.code === 'auto' ? l10n('Auto-Detect') : uiLanguageName(currentSourceObj.code) })}
                   </span>
                   <div className="flex items-center gap-2.5">
                     {!showTranslationPane && (
@@ -1342,7 +1267,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                         className="inline-flex items-center gap-1 text-[11px] font-medium text-teal-800 hover:text-teal-950 cursor-pointer"
                       >
                         <ArrowLeftRight className="w-3 h-3" />
-                        <span>Translate</span>
+                        <span>{l10n("Translate")}</span>
                       </button>
                     )}
                     {inputText && (
@@ -1356,29 +1281,29 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                         }}
                         className="text-[11px] text-slate-500 hover:text-slate-800 underline cursor-pointer"
                       >
-                        Clear
+                        {l10n("Clear")}
                       </button>
                     )}
                   </div>
                 </div>
 
-                <textarea
+                <textarea dir="auto"
                   id="handoff-report-input"
-                  aria-label="Handoff report"
+                  aria-label={l10n("Handoff report")}
                   value={inputText}
                   onChange={handleInputChange}
                   rows={showTranslationPane ? 3 : 2}
                   placeholder={
                     effectiveScope === 'resident' && focusedRow
-                      ? `Speak or type care notes for ${focusedRow.residentName} in ${currentSourceObj.name}...`
-                      : `Speak or type multi-resident notes in ${currentSourceObj.name}...`
+                      ? l10n("Speak or type care notes for {{p1}} in {{p2}}...", { p1: focusedRow.residentName, p2: currentSourceObj.code === 'auto' ? l10n('Auto-Detect') : uiLanguageName(currentSourceObj.code) })
+                      : l10n("Speak or type multi-resident notes in {{p1}}...", { p1: currentSourceObj.name })
                   }
                   className="w-full text-sm bg-white border border-slate-200 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:ring-1 focus:ring-teal-700 resize-y leading-relaxed"
                 />
 
                 {interimText && (
                   <div className="text-xs text-slate-600 italic bg-white p-2 rounded-lg border border-dashed border-slate-300">
-                    <span className="font-semibold text-teal-700">Listening: </span>
+                    <span className="font-semibold text-teal-700">{l10n("Listening:") + " "}</span>
                     {interimText}
                   </div>
                 )}
@@ -1387,7 +1312,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 pt-0.5">
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] font-mono tabular-nums">
-                    {inputText ? `${inputText.trim().split(/\s+/).length} words` : 'Ready'}
+                    {inputText ? l10n("{{p1}} words", { p1: inputText.trim().split(/\s+/).length }) : l10n("Ready")}
                   </span>
                   {inputText.trim() && (
                     <>
@@ -1398,7 +1323,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                         className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-teal-800 disabled:opacity-40 px-1.5 py-0.5 rounded hover:bg-slate-200/60 cursor-pointer transition-colors"
                       >
                         <Volume2 className="w-3.5 h-3.5" />
-                        <span>Listen</span>
+                        <span>{l10n("Listen")}</span>
                       </button>
                       <button
                         type="button"
@@ -1410,7 +1335,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                         ) : (
                           <Copy className="w-3.5 h-3.5" />
                         )}
-                        <span>{copiedField === 'source' ? 'Copied' : 'Copy'}</span>
+                        <span>{copiedField === 'source' ? l10n("Copied") : l10n("Copy")}</span>
                       </button>
                     </>
                   )}
@@ -1431,15 +1356,15 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                     {isExtractingSingle || externalProcessing ? (
                       <>
                         <Loader2 className="w-3.5 h-3.5 cb-pending" />
-                        <span>Extracting...</span>
+                        <span>{l10n("Extracting...")}</span>
                       </>
                     ) : (
                       <>
                         <Sparkles className="w-3.5 h-3.5" />
                         <span>
                           {effectiveScope === 'resident' && focusedRow
-                            ? `Extract for Rm ${focusedRow.room}`
-                            : 'Apply to Sheet'}
+                            ? l10n("Extract for Rm {{p1}}", { p1: focusedRow.room })
+                            : l10n("Apply to Sheet")}
                         </span>
                       </>
                     )}
@@ -1455,13 +1380,13 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                   <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-teal-950">
-                        Translation ({currentTargetObj.name})
+                        {l10n("Translation (")}{uiLanguageName(currentTargetObj.code)})
                       </span>
                       {detectedSourceLanguage &&
                         detectedSourceLanguage !== 'und' &&
                         selectedLanguage === 'auto' && (
                           <span className="text-[11px] text-slate-600">
-                            · Detected {getLanguageByCode(detectedSourceLanguage).name}
+                            {l10n("· Detected") + " "}{uiLanguageName(detectedSourceLanguage)}
                           </span>
                         )}
                       {(isTranslating || externalProcessing || isExtractingSingle) && (
@@ -1475,56 +1400,23 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                         onClick={handleSwapLanguages}
                         disabled={selectedLanguage === 'auto'}
                         className="p-1 rounded bg-white hover:bg-teal-100 disabled:opacity-40 text-teal-800 border border-teal-200 cursor-pointer"
-                        title="Swap languages"
+                        title={l10n("Swap languages")}
                       >
                         <ArrowLeftRight className="w-3 h-3" />
                       </button>
-                      <select
-                        value={targetLanguage}
-                        onChange={(e) => {
-                          const nextTgt = e.target.value;
-                          setTargetLanguage(nextTgt);
-                          targetLanguageRef.current = nextTgt;
-                          if (inputText.trim()) {
-                            setIsTranslating(true);
-                            translateBidirectional(inputText.trim(), selectedLanguage, nextTgt)
-                              .then((res) => {
-                                if (res && res.translatedText) {
-                                  setLiveTranslationText(res.translatedText);
-                                  if (res.detectedSourceLanguage) {
-                                    setDetectedSourceLanguage(res.detectedSourceLanguage);
-                                  }
-                                }
-                              })
-                              .finally(() => setIsTranslating(false));
-                          }
-                        }}
-                        className="bg-white border border-teal-200 rounded-md px-2 py-0.5 text-[11px] font-semibold text-teal-950 focus:outline-none cursor-pointer max-w-[130px]"
-                        aria-label="Target translation language"
-                      >
-                        <optgroup label="LTC Priority Languages">
-                          {priorityLanguages.map((lang) => (
-                            <option key={`tgt-p-${lang.code}`} value={lang.code}>
-                              {lang.name}
-                            </option>
-                          ))}
-                        </optgroup>
-                        {otherLanguages.length > 0 && (
-                          <optgroup label={`All Cloud Languages (${otherLanguages.length})`}>
-                            {otherLanguages.map((lang) => (
-                              <option key={`tgt-o-${lang.code}`} value={lang.code}>
-                                {lang.name}
-                              </option>
-                            ))}
-                          </optgroup>
-                        )}
-                      </select>
+                      <SelectPopover label={l10n('Target translation language')} value={targetLanguage} className="max-w-44"
+                        groups={languageGroups} onChange={(value) => {
+                          setTargetLanguage(value);
+                          targetLanguageRef.current = value;
+                          setLiveTranslationText('');
+                          setDetectedSourceLanguage(null);
+                        }} />
                       {showTwoWayTarget && selectedLanguage === 'en' && targetLanguage === 'en' && (
                         <button
                           type="button"
                           onClick={() => setShowTwoWayTarget(false)}
                           className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
-                          title="Hide translation panel"
+                          title={l10n("Hide translation panel")}
                         >
                           <X className="w-3 h-3" />
                         </button>
@@ -1534,15 +1426,15 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
 
                   <div className="w-full min-h-[82px] text-sm bg-white border border-teal-200/80 rounded-lg p-2.5 text-slate-900 leading-relaxed overflow-y-auto max-h-40">
                     {liveTranslationText ? (
-                      <div>{liveTranslationText}</div>
+                      <div><bdi lang={targetLanguage}>{liveTranslationText}</bdi><small className="cb-translation-label">{l10n('Machine translation · Verify against the original')}</small></div>
                     ) : isTranslating ? (
                       <div className="text-teal-700 italic flex items-center gap-2 py-3 text-xs">
                         <Loader2 className="w-4 h-4 cb-pending" />
-                        <span>Translating...</span>
+                        <span>{l10n("Translating...")}</span>
                       </div>
                     ) : (
                       <div className="text-slate-400 italic py-1 text-xs">
-                        Translation appears here automatically.
+<ClinicalText text={inputText} source={selectedLanguage} target={targetLanguage} previewOnly />
                       </div>
                     )}
                   </div>
@@ -1559,7 +1451,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                           className="inline-flex items-center gap-1 text-xs font-medium text-teal-900 hover:text-teal-700 disabled:opacity-40 px-1.5 py-0.5 rounded hover:bg-teal-100 cursor-pointer transition-colors"
                         >
                           <Volume2 className="w-3.5 h-3.5" />
-                          <span>Listen</span>
+                          <span>{l10n("Listen")}</span>
                         </button>
                         <button
                           type="button"
@@ -1571,7 +1463,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                           ) : (
                             <Copy className="w-3.5 h-3.5" />
                           )}
-                          <span>{copiedField === 'target' ? 'Copied' : 'Copy'}</span>
+                          <span>{copiedField === 'target' ? l10n("Copied") : l10n("Copy")}</span>
                         </button>
                       </>
                     )}
@@ -1591,15 +1483,15 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                     {isExtractingSingle || externalProcessing ? (
                       <>
                         <Loader2 className="w-3.5 h-3.5 cb-pending" />
-                        <span>Extracting...</span>
+                        <span>{l10n("Extracting...")}</span>
                       </>
                     ) : (
                       <>
                         <Sparkles className="w-3.5 h-3.5" />
                         <span>
                           {effectiveScope === 'resident' && focusedRow
-                            ? `Extract for Rm ${focusedRow.room}`
-                            : 'Apply to Sheet'}
+                            ? l10n("Extract for Rm {{p1}}", { p1: focusedRow.room })
+                            : l10n("Apply to Sheet")}
                         </span>
                       </>
                     )}
@@ -1614,15 +1506,15 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
             <div className="bg-amber-50/70 border border-amber-300 rounded-xl p-3.5 space-y-3">
               <div className="flex items-center justify-between gap-2 pb-2 border-b border-amber-200">
                 <div className="text-xs font-semibold text-amber-950">
-                  Review extracted note for Rm {focusedRow.room} ({focusedRow.residentName})
+                  {l10n("Review extracted note for Rm") + " "}{focusedRow.room} ({focusedRow.residentName})
                 </div>
-                <span className="text-[11px] text-amber-800">Human confirmation required</span>
+                <span className="text-[11px] text-amber-800">{l10n("Human confirmation required")}</span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
                 <div>
                   <span className="text-[11px] font-medium text-slate-500 block mb-0.5">
-                    Completed care
+                    {l10n("Completed care")}
                   </span>
                   <p className="text-slate-900 font-medium leading-relaxed">
                     {pendingSingleRecord.care_completed || '—'}
@@ -1631,11 +1523,11 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
 
                 <div>
                   <span className="text-[11px] font-medium text-slate-500 block mb-0.5">
-                    Stop &amp; Watch
+                    {l10n("Stop & Watch")}
                   </span>
                   <div className="flex flex-wrap gap-1">
                     {pendingSingleRecord.stop_and_watch_flags.length === 0 ? (
-                      <span className="text-slate-500">No changes flagged</span>
+                      <span className="text-slate-500">{l10n("No changes flagged")}</span>
                     ) : (
                       pendingSingleRecord.stop_and_watch_flags.map((flag, idx) => {
                         const detectedCodeId = findCodeIdFromFlagText(flag);
@@ -1661,7 +1553,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
 
                 <div>
                   <span className="text-[11px] font-medium text-slate-500 block mb-0.5">
-                    Observations
+                    {l10n("Observations")}
                   </span>
                   <p className="text-slate-900 font-medium leading-relaxed">
                     {pendingSingleRecord.additional_observations || '—'}
@@ -1672,7 +1564,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
               {(pendingSingleRecord.care_requirements?.length || 0) > 0 && (
                 <div className="pt-2 border-t border-amber-200/70 flex flex-wrap items-center gap-1.5 text-xs">
                   <ListChecks className="w-3.5 h-3.5 text-teal-700 shrink-0" />
-                  <span className="font-medium text-slate-700">Next-shift tasks:</span>
+                  <span className="font-medium text-slate-700">{l10n("Next-shift tasks:")}</span>
                   {pendingSingleRecord.care_requirements!.map((req, rIdx) => (
                     <span
                       key={rIdx}
@@ -1691,7 +1583,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                   onClick={() => setPendingSingleRecord(null)}
                   className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 cursor-pointer"
                 >
-                  Discard
+                  {l10n("Discard")}
                 </button>
                 <button
                   type="button"
@@ -1699,7 +1591,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                   className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
                 >
                   <Check className="w-4 h-4" />
-                  <span>Save to Rm {focusedRow.room}</span>
+                  <span>{l10n("Save to Rm") + " "}{focusedRow.room}</span>
                 </button>
               </div>
             </div>
@@ -1711,8 +1603,8 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
               <div className="flex items-center gap-2 text-emerald-950 font-semibold">
                 <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
                 <span>
-                  Updated {lastAutoFilledRooms.length} resident file
-                  {lastAutoFilledRooms.length > 1 ? 's' : ''} (pending review)
+                {l10n("Updated") + " "}{lastAutoFilledRooms.length}{" " + l10n("resident file")}
+                  {lastAutoFilledRooms.length > 1 ? l10n("s") : ''}{" " + l10n("(pending review)")}
                 </span>
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
@@ -1726,7 +1618,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                       className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-emerald-100 text-emerald-950 border border-emerald-300 rounded-lg font-semibold text-xs cursor-pointer transition-colors"
                     >
                       <span className="font-mono tabular-nums">{roomNum}</span>
-                      <span>· {matched?.residentName || 'Resident'}</span>
+                      <span>· {matched?.residentName || l10n("Resident")}</span>
                       <ArrowRight className="w-3 h-3 text-emerald-700" />
                     </button>
                   );
@@ -1741,7 +1633,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
               <div className="flex items-center gap-2">
                 <UserPlus className="w-4 h-4 text-amber-800 shrink-0" />
                 <span className="font-semibold text-amber-950">
-                  Assign observation to a resident (no room number mentioned)
+                  {l10n("Assign observation to a resident (no room number mentioned)")}
                 </span>
               </div>
 
@@ -1753,7 +1645,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                   >
                     {item.general_observation_note && (
                       <div className="text-sm text-slate-900 font-medium">
-                        &ldquo;{item.general_observation_note}&rdquo;
+                        {l10n("&ldquo;")}{item.general_observation_note}{l10n("&rdquo;")}
                       </div>
                     )}
 
@@ -1777,8 +1669,8 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
 
                     <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-[11px] font-medium text-slate-600 mr-1">
-                          Assign to:
+                        <span className="text-[11px] font-medium text-slate-600 me-1">
+                          {l10n("Assign to:")}
                         </span>
                         {rows.map((r) => (
                           <button
@@ -1795,7 +1687,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                           onClick={() => onAssignExtraction && onAssignExtraction(idx, 'unit_note')}
                           className="px-2.5 py-1 bg-slate-100 hover:bg-slate-700 text-slate-800 hover:text-white border border-slate-200 rounded-md text-[11px] font-semibold transition-colors cursor-pointer"
                         >
-                          Unit Note
+                          {l10n("Unit Note")}
                         </button>
                       </div>
 
@@ -1805,7 +1697,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                           onClick={() => onDismissExtraction(idx)}
                           className="text-[11px] text-slate-500 hover:text-rose-700 underline cursor-pointer"
                         >
-                          Dismiss
+                          {l10n("Dismiss")}
                         </button>
                       )}
                     </div>
@@ -1820,13 +1712,13 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
             <div className="bg-sky-50 border border-sky-200 rounded-xl p-3 space-y-2 text-xs">
               <div className="flex items-center gap-2 text-sky-900 font-semibold">
                 <HelpCircle className="w-4 h-4 text-sky-700" />
-                <span>Clarification needed</span>
+                <span>{l10n("Clarification needed")}</span>
               </div>
-              <div className="space-y-1.5 pl-6">
+              <div className="space-y-1.5 ps-6">
                 {openQuestions.map((q, idx) => (
                   <div key={idx} className="space-y-1">
                     <div className="flex items-center justify-between text-sky-950 font-medium">
-                      <span>{q}</span>
+                      <span>{l10n(q)}</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -1835,7 +1727,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                         }}
                         className="text-[11px] text-sky-700 hover:text-sky-900 underline font-semibold cursor-pointer"
                       >
-                        {answeringQuestionIndex === idx ? 'Cancel' : 'Answer'}
+                        {answeringQuestionIndex === idx ? l10n("Cancel") : l10n("Answer")}
                       </button>
                     </div>
 
@@ -1845,7 +1737,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                           type="text"
                           value={questionAnswerText}
                           onChange={(e) => setQuestionAnswerText(e.target.value)}
-                          placeholder="e.g., 'Room 102' or 'Took 200 mL apple juice'"
+                          placeholder={l10n("e.g., 'Room 102' or 'Took 200 mL apple juice'")}
                           className="flex-1 bg-white border border-sky-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none"
                         />
                         <button
@@ -1853,7 +1745,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                           onClick={() => handleQuestionSubmit(idx, q)}
                           className="px-3 py-1.5 bg-sky-700 hover:bg-sky-800 text-white rounded-lg text-xs font-semibold cursor-pointer"
                         >
-                          Save
+                          {l10n("Save")}
                         </button>
                       </div>
                     )}
@@ -1873,8 +1765,8 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
               >
                 <span>
                   {showSegments
-                    ? 'Hide shift transcript history'
-                    : `Transcript history (${segments.length})`}
+                    ? l10n("Hide shift transcript history")
+                    : l10n("Transcript history ({{p1}})", { p1: segments.length })}
                 </span>
                 {showSegments ? (
                   <ChevronUp className="w-3 h-3" />
@@ -1889,7 +1781,8 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                     const segTargetCode = seg.targetLanguage || targetLanguage;
                     const segTargetObj = getLanguageByCode(segTargetCode);
                     const segSourceObj = getLanguageByCode(seg.detectedSourceLanguage || seg.language);
-                    const displayTranslation = seg.translatedText || seg.translatedEnglish;
+                    const segmentTranslation = seg.translatedText || seg.translatedEnglish;
+                    const displayTranslation = segmentTranslation === seg.originalText ? '' : segmentTranslation;
 
                     return (
                       <div
@@ -1899,14 +1792,14 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                         <div className="space-y-1">
                           <div className="flex items-center justify-between text-[11px] text-slate-500">
                             <span>
-                              {segSourceObj.name} ·{' '}
+                              {uiLanguageName(segSourceObj.code)} ·{' '}
                               <span className="font-mono tabular-nums">{seg.timestamp}</span>
                             </span>
                             <button
                               type="button"
                               onClick={() => handleCopyText(`hist_orig_${seg.id}`, seg.originalText)}
                               className="text-slate-400 hover:text-slate-700 p-0.5 cursor-pointer"
-                              title="Copy"
+                              title={l10n("Copy")}
                             >
                               {copiedField === `hist_orig_${seg.id}` ? (
                                 <Check className="w-3 h-3 text-emerald-600" />
@@ -1915,19 +1808,19 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                               )}
                             </button>
                           </div>
-                          <div className="text-slate-800 text-xs">{seg.originalText}</div>
+                          <div className="text-slate-800 text-xs"><bdi>{seg.originalText}</bdi></div>
                         </div>
 
                         <div className="space-y-1">
                           <div className="flex items-center justify-between text-[11px] text-teal-900 font-medium">
-                            <span>{segTargetObj.name}</span>
+                            <span>{uiLanguageName(segTargetObj.code)}</span>
                             <div className="flex items-center gap-1">
                               <button
                                 type="button"
                                 onClick={() => handleRetranslate(seg)}
                                 disabled={seg.isTranslating}
                                 className="text-teal-700 hover:text-teal-900 p-0.5 cursor-pointer"
-                                title="Retranslate"
+                                title={l10n("Retranslate")}
                               >
                                 <RefreshCw
                                   className={`w-3 h-3 ${seg.isTranslating ? 'cb-pending' : ''}`}
@@ -1940,7 +1833,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                                     handleCopyText(`hist_trans_${seg.id}`, displayTranslation)
                                   }
                                   className="text-slate-400 hover:text-teal-800 p-0.5 cursor-pointer"
-                                  title="Copy"
+                                  title={l10n("Copy")}
                                 >
                                   {copiedField === `hist_trans_${seg.id}` ? (
                                     <Check className="w-3 h-3 text-emerald-600" />
@@ -1953,7 +1846,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                           </div>
                           <div className="text-slate-900 text-xs">
                             {seg.isTranslating ? (
-                              <span className="text-teal-700 italic">Translating...</span>
+                              <span className="text-teal-700 italic">{l10n("Translating...")}</span>
                             ) : (
                               displayTranslation || '—'
                             )}

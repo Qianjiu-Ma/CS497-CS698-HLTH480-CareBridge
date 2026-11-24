@@ -1,3 +1,4 @@
+import { l10n } from '../utils/localization';
 import React, { useState } from 'react';
 import {
   Info,
@@ -63,7 +64,7 @@ export const StopAndWatchLegend: React.FC<StopAndWatchLegendProps> = ({
   };
 
   return (
-    <ControlledDialog open={isOpen} onDismiss={onClose} label="INTERACT Stop and Watch Reference Guide"
+    <ControlledDialog open={isOpen} onDismiss={onClose} label={l10n("INTERACT Stop and Watch Reference Guide")}
       className="cb-guide-drawer cb-motion-drawer" fallbackFocusId="report-more-trigger">
       <aside className="w-full bg-white h-full border-l border-slate-200 flex flex-col overflow-hidden">
       {/* Drawer Header */}
@@ -72,10 +73,10 @@ export const StopAndWatchLegend: React.FC<StopAndWatchLegendProps> = ({
           <ShieldAlert className="w-5 h-5 text-purple-700 shrink-0" />
           <div>
             <h2 className="text-sm font-bold text-slate-900">
-              INTERACT™ Stop &amp; Watch Clinical Guide
+              {l10n("INTERACT™ Stop & Watch Clinical Guide")}
             </h2>
             <p className="text-xs text-slate-500">
-              Select any of the 12 codes below to inspect clinical criteria and nurse notification rules
+              {l10n("Select any of the 12 codes below to inspect clinical criteria and nurse notification rules")}
             </p>
           </div>
         </div>
@@ -84,7 +85,7 @@ export const StopAndWatchLegend: React.FC<StopAndWatchLegendProps> = ({
           type="button"
           onClick={onClose}
           className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/60 transition-colors cursor-pointer"
-          title="Close guide (Esc)"
+          title={l10n("Close guide (Esc)")}
         >
           <X className="w-5 h-5" />
         </button>
@@ -95,7 +96,7 @@ export const StopAndWatchLegend: React.FC<StopAndWatchLegendProps> = ({
         {/* Tier Filters */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs font-semibold text-slate-600">
-            Filter by clinical severity:
+            {l10n("Filter by clinical severity:")}
           </span>
           <div className="flex flex-wrap items-center gap-1.5 text-xs">
             <button
@@ -107,7 +108,7 @@ export const StopAndWatchLegend: React.FC<StopAndWatchLegendProps> = ({
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
-              All 12
+              {l10n("All 12")}
             </button>
             <button
               type="button"
@@ -119,7 +120,7 @@ export const StopAndWatchLegend: React.FC<StopAndWatchLegendProps> = ({
               }`}
             >
               <OctagonAlert className="w-3 h-3" />
-              <span>Tier 3: Urgent</span>
+              <span>{l10n("Tier 3: Urgent")}</span>
             </button>
             <button
               type="button"
@@ -131,7 +132,7 @@ export const StopAndWatchLegend: React.FC<StopAndWatchLegendProps> = ({
               }`}
             >
               <AlertTriangle className="w-3 h-3" />
-              <span>Tier 2: Shift</span>
+              <span>{l10n("Tier 2: Shift")}</span>
             </button>
             <button
               type="button"
@@ -143,7 +144,7 @@ export const StopAndWatchLegend: React.FC<StopAndWatchLegendProps> = ({
               }`}
             >
               <Info className="w-3 h-3" />
-              <span>Tier 1: Monitor</span>
+              <span>{l10n("Tier 1: Monitor")}</span>
             </button>
           </div>
         </div>
@@ -160,7 +161,7 @@ export const StopAndWatchLegend: React.FC<StopAndWatchLegendProps> = ({
                 key={code.id}
                 type="button"
                 onClick={() => setSelectedCodeId(code.id)}
-                className={`p-2.5 rounded-xl border text-left transition-colors cursor-pointer flex flex-col justify-between ${
+                className={`p-2.5 rounded-xl border text-start transition-colors cursor-pointer flex flex-col justify-between ${
                   isSelected
                     ? 'bg-teal-50/40 border-teal-700 ring-1 ring-teal-700'
                     : 'bg-white border-slate-200 hover:border-slate-300'
@@ -186,12 +187,12 @@ export const StopAndWatchLegend: React.FC<StopAndWatchLegendProps> = ({
                     className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border inline-flex items-center gap-0.5 font-mono tabular-nums ${meta.badgeBg} ${meta.badgeColor} ${meta.badgeBorder}`}
                   >
                     {renderTierIcon(code.defaultTier, 'w-2.5 h-2.5')}
-                    <span>T{code.defaultTier}</span>
+                    <span>{l10n("T")}{code.defaultTier}</span>
                   </span>
                 </div>
 
                 <div className="mt-2 text-xs font-semibold text-slate-900 truncate w-full">
-                  {code.shortLabel}
+                  {l10n(code.shortLabel)}
                 </div>
               </button>
             );
@@ -212,10 +213,10 @@ export const StopAndWatchLegend: React.FC<StopAndWatchLegendProps> = ({
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs font-mono font-bold bg-white px-1.5 py-0.5 rounded border border-slate-300">
-                    Code {selectedCode.letter}
+                    {l10n("Code") + " "}{selectedCode.letter}
                   </span>
                   <h3 className="text-sm font-bold text-slate-900">
-                    {selectedCode.plainLabel || selectedCode.label}
+                    {l10n(selectedCode.plainLabel || selectedCode.label)}
                   </h3>
                 </div>
                 <div className="flex items-center gap-2 mt-1">
@@ -223,7 +224,7 @@ export const StopAndWatchLegend: React.FC<StopAndWatchLegendProps> = ({
                     className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded border ${selectedMeta.badgeBg} ${selectedMeta.badgeColor} ${selectedMeta.badgeBorder}`}
                   >
                     {renderTierIcon(selectedCode.defaultTier, 'w-3 h-3')}
-                    <span>{selectedMeta.heading}</span>
+                    <span>{l10n(selectedMeta.heading)}</span>
                   </span>
                   <span className="text-xs text-slate-500 capitalize">
                     {selectedCode.category}
@@ -239,14 +240,14 @@ export const StopAndWatchLegend: React.FC<StopAndWatchLegendProps> = ({
                 className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors cursor-pointer"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
-                <span>Prev</span>
+                <span>{l10n("Prev")}</span>
               </button>
               <button
                 type="button"
                 onClick={handleNextCode}
                 className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors cursor-pointer"
               >
-                <span>Next</span>
+                <span>{l10n("Next")}</span>
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -255,13 +256,13 @@ export const StopAndWatchLegend: React.FC<StopAndWatchLegendProps> = ({
           <div className="space-y-3 text-sm">
             <div className="p-3.5 rounded-lg bg-white border border-slate-200 space-y-1.5">
               <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                What to Look For
+                {l10n("What to Look For")}
               </span>
               <p className="text-slate-900 leading-relaxed">
-                {selectedCode.plainLanguageDescription}
+                {l10n(selectedCode.plainLanguageDescription)}
               </p>
               <p className="text-xs text-slate-500 italic pt-1">
-                Example: {selectedCode.examplePhrase}
+                {l10n("Example:") + " "}{l10n(selectedCode.examplePhrase)}
               </p>
             </div>
 
@@ -276,10 +277,10 @@ export const StopAndWatchLegend: React.FC<StopAndWatchLegendProps> = ({
             >
               <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider">
                 {renderTierIcon(selectedCode.defaultTier, 'w-4 h-4')}
-                <span>Required Clinical Protocol</span>
+                <span>{l10n("Required Clinical Protocol")}</span>
               </div>
               <p className="font-medium leading-relaxed text-sm">
-                {selectedMeta.actionSummary}
+                {l10n(selectedMeta.actionSummary)}
               </p>
             </div>
           </div>

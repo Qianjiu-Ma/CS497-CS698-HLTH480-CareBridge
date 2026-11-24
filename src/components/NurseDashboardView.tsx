@@ -1,3 +1,5 @@
+import { ClinicalText } from './ClinicalText';
+import { l10n, localizedShift } from '../utils/localization';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertThresholds, HandoffRow, NurseEscalation } from '../types/handoff';
 import {
@@ -107,7 +109,7 @@ function concernStatus(item: EnrichedConcern, compact = false): string {
 function bowelFinding(item: EnrichedConcern): string {
   return item.hoursSinceBM == null
     ? 'Bowel movement overdue'
-    : 'No bowel movement for ' + item.hoursSinceBM + ' hours';
+    : l10n('No bowel movement for {{hours}} hours', { hours: item.hoursSinceBM });
 }
 
 function compactFinding(item: EnrichedConcern): string {
@@ -186,10 +188,10 @@ function formatConcernHeadline(
   }
   const parts: string[] = [];
   if (isBmOverdue) {
-    parts.push(hoursSinceBM ? `No bowel movement logged for ${hoursSinceBM}h` : 'Bowel movement overdue');
+    parts.push(hoursSinceBM ? l10n("No bowel movement logged for {{p1}}h", { p1: hoursSinceBM }) : 'Bowel movement overdue');
   }
   if (isLowFluid && fluidIntakeMl !== null && fluidIntakeMl !== undefined) {
-    parts.push(`Low fluid intake (${fluidIntakeMl} mL)`);
+    parts.push(l10n("Low fluid intake ({{p1}} mL)", { p1: fluidIntakeMl }));
   }
   return parts.length > 0 ? parts.join(' · ') : 'Clinical change reported';
 }
@@ -657,7 +659,7 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
               type="button"
               onClick={() => setDetailCodeId(codeId)}
               className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${styleClass}`}
-              title="Inspect Stop & Watch clinical criteria"
+              title={l10n("Inspect Stop & Watch clinical criteria")}
             >
               <IconComponent className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
               <span>
@@ -678,11 +680,11 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
             <span className="font-semibold text-slate-900">
-              Complete Resident Record · Room {item.room} {item.residentName}
+              {l10n("Complete Resident Record · Room") + " "}{item.room} {item.residentName}
             </span>
             {item.hasPendingVerification && (
               <span className="text-amber-800 font-medium">
-                · Unverified AI entries on Handoff Sheet
+                {l10n("· Unverified AI entries on Handoff Sheet")}
               </span>
             )}
           </div>
@@ -692,7 +694,7 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
             onClick={() => onOpenResidentInHandoff(item.room)}
             className="inline-flex items-center gap-1 text-xs font-semibold text-teal-800 hover:text-teal-950 hover:underline cursor-pointer whitespace-nowrap"
           >
-            <span>Open in Handoff Sheet</span>
+            <span>{l10n("Open in Handoff Sheet")}</span>
             <ArrowUpRight className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -701,20 +703,20 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
           <div className="space-y-3 text-xs">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-2 border-y border-slate-200/70">
               <div>
-                <div className="text-[11px] font-medium text-slate-500">Fluids</div>
+                <div className="text-[11px] font-medium text-slate-500">{l10n("Fluids")}</div>
                 <div
                   className={`text-sm font-semibold font-mono tabular-nums mt-0.5 ${
                     item.isLowFluid ? 'text-amber-800' : 'text-slate-900'
                   }`}
                 >
                   {item.fluidIntakeMl !== null && item.fluidIntakeMl !== undefined
-                    ? `${item.fluidIntakeMl} mL`
+                    ? l10n("{{p1}} mL", { p1: item.fluidIntakeMl })
                     : '—'}
                 </div>
               </div>
 
               <div>
-                <div className="text-[11px] font-medium text-slate-500">Bowel movement</div>
+                <div className="text-[11px] font-medium text-slate-500">{l10n("Bowel movement")}</div>
                 <div
                   className={`text-sm font-semibold mt-0.5 ${
                     item.isBmOverdue ? 'text-rose-800' : 'text-slate-900'
@@ -725,17 +727,17 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
               </div>
 
               <div>
-                <div className="text-[11px] font-medium text-slate-500">Weight</div>
+                <div className="text-[11px] font-medium text-slate-500">{l10n("Weight")}</div>
                 <div className="text-sm font-semibold font-mono tabular-nums text-slate-900 mt-0.5">
                   {row.mltcDetails?.weightKg?.value !== null &&
                   row.mltcDetails?.weightKg?.value !== undefined
-                    ? `${row.mltcDetails.weightKg.value} kg`
+                    ? l10n("{{p1}} kg", { p1: row.mltcDetails.weightKg.value })
                     : '—'}
                 </div>
               </div>
 
               <div>
-                <div className="text-[11px] font-medium text-slate-500">Last repositioned</div>
+                <div className="text-[11px] font-medium text-slate-500">{l10n("Last repositioned")}</div>
                 <div className="text-sm font-semibold font-mono tabular-nums text-slate-900 mt-0.5">
                   {row.mltcDetails?.lastRepositionTime?.value || '—'}
                 </div>
@@ -744,18 +746,18 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-slate-700 leading-relaxed">
               <div>
-                <span className="font-semibold text-slate-800">Care completed: </span>
+                <span className="font-semibold text-slate-800">{l10n("Care completed:") + " "}</span>
                 <span>{row.done?.value || '—'}</span>
               </div>
               <div>
-                <span className="font-semibold text-slate-800">Next-shift handover: </span>
+                <span className="font-semibold text-slate-800">{l10n("Next-shift handover:") + " "}</span>
                 <span>{row.notDoneNextShift?.value || '—'}</span>
               </div>
             </div>
 
             {row.careRequirements && row.careRequirements.length > 0 && (
               <div className="pt-1 text-slate-700">
-                <span className="font-semibold text-slate-800">Care requirements: </span>
+                <span className="font-semibold text-slate-800">{l10n("Care requirements:") + " "}</span>
                 <span>
                   {row.careRequirements
                     .map((req) => `${req.category}: ${req.action_item}`)
@@ -766,7 +768,7 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
           </div>
         ) : (
           <p className="text-xs text-slate-500">
-            No live shift record found for Room {item.room}.
+            {l10n("No live shift record found for Room") + " "}{item.room}.
           </p>
         )}
       </div>
@@ -776,8 +778,8 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
 
   const renderSignals = (item: EnrichedConcern) => (
     <span className="clinical-review-signals">
-      {item.isLowFluid && <span><Droplet /> Low fluid intake · {item.fluidIntakeMl} mL</span>}
-      {item.hasPendingVerification && <span><ShieldAlert /> Unverified handoff entries</span>}
+      {item.isLowFluid && <span><Droplet />{" " + l10n("Low fluid intake ·") + " "}{item.fluidIntakeMl}{" " + l10n("mL")}</span>}
+      {item.hasPendingVerification && <span><ShieldAlert />{" " + l10n("Unverified handoff entries")}</span>}
       {item.isBmOverdue && compactFinding(item) !== bowelFinding(item) && (
         <span><Clock /> {bowelFinding(item)}</span>
       )}
@@ -791,7 +793,7 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
     tone = '',
   ) => items.length > 0 && (
     <section className="clinical-review-group">
-      <h2 className={tone}><Icon /> {title} <span className="clinical-review-count">{items.length}</span></h2>
+      <h2 className={tone}><Icon /> {l10n(title)} <span className="clinical-review-count">{items.length}</span></h2>
       <div className="cb-panel clinical-review-list">
         {items.map((item) => {
           const FindingIcon = item.stage === 'resolved' ? Check
@@ -815,10 +817,10 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
               <span className="min-w-0">
                 <span className="clinical-review-identity">
                   <strong>{item.residentName}</strong>
-                  <span>· Room {item.room}</span>
-                  <span>· {concernStatus(item, true)}</span>
+                  <span>{l10n("· Room") + " "}{item.room}</span>
+                  <span>· {l10n(concernStatus(item, true))}</span>
                 </span>
-                <span className="clinical-review-finding">{compactFinding(item)}</span>
+                <span className="clinical-review-finding"><bdi>{l10n(compactFinding(item))}</bdi></span>
                 {renderSignals(item)}
               </span>
               <span className="clinical-review-action">{action} <ChevronRight /></span>
@@ -839,64 +841,62 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
       <div className="clinical-review-dialog-body">
         <div className="clinical-review-detail-head">
           <div>
-            <p className="clinical-review-sub">Room {item.room} · {concernStatus(item)}</p>
+            <p className="clinical-review-sub">{l10n("Room") + " "}{item.room} · {l10n(concernStatus(item))}</p>
             <h2 id="clinical-review-dialog-title">{item.residentName}</h2>
           </div>
-          <button type="button" autoFocus className="clinical-review-close" aria-label="Close clinical review"
+          <button type="button" autoFocus className="clinical-review-close" aria-label={l10n("Close clinical review")}
             onClick={() => dialogRef.current?.close()}><X /></button>
         </div>
         <section className="clinical-review-block">
           <h3 className={item.isPriorityAttention ? 'priority' : undefined}>
-            {item.isPriorityAttention ? 'Priority attention' : 'Reported concern'}
+            {item.isPriorityAttention ? l10n("Priority attention") : l10n("Reported concern")}
           </h3>
-          <p><strong>{finding}</strong></p>
+          <p><strong>{l10n(finding)}</strong></p>
           {renderSignals(item)}
-          <p>{[
-            finding !== item.concernHeadline ? item.concernHeadline : '',
-            item.qualitativeObservation !== item.concernHeadline ? item.qualitativeObservation : '',
-          ].filter(Boolean).join(' · ')}</p>
+          {item.esc?.note && <p><ClinicalText text={item.esc.note} /></p>}
+          {item.qualitativeObservation && item.qualitativeObservation !== item.esc?.note && <p><ClinicalText text={item.qualitativeObservation} /></p>}
           <p className="clinical-review-sub">{item.outgoingPsw} · {item.timestamp}</p>
         </section>
         {esc?.nurseComment && (
           <section className="clinical-review-block">
-            <h3>Latest nurse assessment</h3>
-            <p>{esc.nurseComment}</p>
+            <h3>{l10n("Latest nurse assessment")}</h3>
+            <p><ClinicalText text={esc.nurseComment} /></p>
             <p className="clinical-review-sub">{[esc.acknowledgedBy, esc.acknowledgedAt].filter(Boolean).join(' · ')}</p>
           </section>
         )}
         {resolved && esc && (
           <section className="clinical-review-block">
-            <h3>Resolution</h3>
-            {esc.resolutionNote && <p>{esc.resolutionNote}</p>}
+            <h3>{l10n("Resolution")}</h3>
+            {esc.resolutionNote && <p><ClinicalText text={esc.resolutionNote} /></p>}
             <p className="clinical-review-sub">{[esc.resolvedBy || esc.acknowledgedBy, esc.resolvedAt].filter(Boolean).join(' · ')}</p>
           </section>
         )}
         <details className="clinical-review-block">
-          <summary>Clinical context</summary>
+          <summary>{l10n("Clinical context")}</summary>
           <div className="space-y-3 pb-2 text-sm">
-            <p>{getUrgencyLabel(item)}</p>
+            <p>{l10n(getUrgencyLabel(item))}</p>
             {item.isPriorityAttention && item.abnormalMetrics.length === 0 && (
-              <p>Immediate RN evaluation indicated</p>
+              <p>{l10n("Immediate RN evaluation indicated")}</p>
             )}
-            {item.prevShiftTier && <p>Prior shift: Tier {item.prevShiftTier}{item.escalatedByRepeat ? ' (repeat escalated)' : ''}</p>}
-            {item.escalatedByCount && <p>3+ changes (Base Tier {item.baseTier} → Tier {item.effectiveTier})</p>}
+            {item.prevShiftTier && <p>{l10n("Prior shift: Tier") + " "}{item.prevShiftTier}{item.escalatedByRepeat ? l10n(" (repeat escalated)") : ''}</p>}
+            {item.escalatedByCount && <p>{l10n("3+ changes (Base Tier") + " "}{item.baseTier}{" " + l10n("→ Tier") + " "}{item.effectiveTier})</p>}
             {item.abnormalMetrics.map((metric) => (
-              <p key={metric.key}>{metric.label}: {metric.value} {metric.unit} · {metric.thresholdNote}</p>
+              <p key={metric.key}>{l10n(metric.label)}: {metric.value} {metric.unit} · {l10n(metric.thresholdNote)}</p>
             ))}
             {renderCodeCriteriaButtons(item.codes)}
           </div>
           {renderResidentRecordOnDemand(item)}
           {templates.length > 0 && (
             <details>
-              <summary>Documentation templates</summary>
+              <summary>{l10n("Documentation templates")}</summary>
               <div className="flex flex-wrap gap-1.5">
                 {templates.map((template) => (
-                  <button type="button" key={template.label} className="clinical-review-template" onClick={() => {
+                  <button type="button" key={l10n(template.label)} className="clinical-review-template" onClick={() => {
                     setAssessmentDraft(template.template);
                     setAssessmentError('');
                     setCheckedResolution(false);
                     noteRef.current?.focus();
-                  }}>+ {template.label}</button>
+                  }}>+ {l10n(template.label)}</button>
                 ))}
               </div>
             </details>
@@ -904,7 +904,7 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
         </details>
         {item.hasPendingVerification && (
           <p className="clinical-review-warning">
-            <ShieldAlert /> This resident has unverified AI-extracted handoff entries. Confirm findings directly at bedside or on the Handoff Sheet before signing off.
+            <ShieldAlert />{" " + l10n("This resident has unverified AI-extracted handoff entries. Confirm findings directly at bedside or on the Handoff Sheet before signing off.")}
           </p>
         )}
         {resolved && esc ? (
@@ -913,15 +913,15 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
               onReopenEscalation(esc.id);
               setAnnouncement('Concern reopened for monitoring.');
               dialogRef.current?.close();
-            }}>Reopen for monitoring</Button>
+            }}>{l10n("Reopen for monitoring")}</Button>
           </div>
         ) : (
           <form className="clinical-review-block" onSubmit={(event) => {
             event.preventDefault();
             saveConcern(item, false);
           }}>
-            <label htmlFor="clinical-review-note"><strong>Assessment / follow-up</strong></label>
-            <textarea className="cb-field"
+            <label htmlFor="clinical-review-note"><strong>{l10n("Assessment / follow-up")}</strong></label>
+            <textarea dir="auto" className="cb-field"
               ref={noteRef}
               id="clinical-review-note"
               aria-invalid={Boolean(assessmentError)}
@@ -931,41 +931,41 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
                 setAssessmentError('');
                 if (needsReview) setCheckedResolution(false);
               }}
-              placeholder="Record verified findings and actions..."
+              placeholder={l10n("Record verified findings and actions...")}
             />
-            {assessmentError && <p role="alert" className="priority">{assessmentError}</p>}
+            {assessmentError && <p role="alert" className="priority">{l10n(assessmentError)}</p>}
             <div className="clinical-review-actions">
-              <Button type="submit" variant="primary">{needsReview ? 'Save & monitor' : 'Save follow-up'}</Button>
+              <Button type="submit" variant="primary">{needsReview ? l10n("Save & monitor") : l10n("Save follow-up")}</Button>
               <Button aria-expanded={showResolution}
                 onClick={() => {
                   setShowResolution(!showResolution);
                   setCheckedResolution(false);
                   setResolutionError('');
-                }}>Resolve concern</Button>
+                }}>{l10n("Resolve concern")}</Button>
             </div>
             {showResolution && (
               <div className="clinical-review-block">
                 {!needsReview && (
                   <>
-                    <label htmlFor="clinical-review-resolution"><strong>Verified clinical resolution outcome</strong></label>
-                    <textarea className="cb-field" id="clinical-review-resolution" ref={resolutionRef} value={resolutionDraft}
+                    <label htmlFor="clinical-review-resolution"><strong>{l10n("Verified clinical resolution outcome")}</strong></label>
+                    <textarea dir="auto" className="cb-field" id="clinical-review-resolution" ref={resolutionRef} value={resolutionDraft}
                       aria-invalid={Boolean(resolutionError)}
                       onChange={(event) => {
                         setResolutionDraft(event.target.value);
                         setCheckedResolution(false);
                         setResolutionError('');
                       }} />
-                    {resolutionError && <p role="alert" className="priority">{resolutionError}</p>}
+                    {resolutionError && <p role="alert" className="priority">{l10n(resolutionError)}</p>}
                   </>
                 )}
                 <label className="clinical-review-verify">
                   <input type="checkbox" checked={checkedResolution}
                     onChange={(event) => setCheckedResolution(event.target.checked)} />
-                  I verified that this concern is resolved.
+                  {l10n("I verified that this concern is resolved.")}
                 </label>
                 <div className="clinical-review-actions">
                   <Button disabled={!checkedResolution}
-                    onClick={() => saveConcern(item, true)}>Confirm resolution</Button>
+                    onClick={() => saveConcern(item, true)}>{l10n("Confirm resolution")}</Button>
                 </div>
               </div>
             )}
@@ -984,13 +984,13 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
 
   return (
     <div className="clinical-review">
-      <PageHeader title="Clinical review" subtitle={<span title={shift}>{[unit, shiftLabel].filter(Boolean).join(' · ')}</span>}
+      <PageHeader title={l10n("Clinical review")} subtitle={<span title={localizedShift(shift || '')}>{[unit, l10n(shiftLabel || '')].filter(Boolean).join(' · ')}</span>}
         actions={isEditingNurseName ? (
           <form className="clinical-review-nurse" onSubmit={(event) => {
             event.preventDefault();
             saveNurseIdentity();
           }}>
-            <input aria-label="Duty nurse name and credentials" autoFocus value={nurseNameDraft}
+            <input aria-label={l10n("Duty nurse name and credentials")} autoFocus value={nurseNameDraft}
               onChange={(event) => setNurseNameDraft(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Escape') {
@@ -998,7 +998,7 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
                   queueMicrotask(() => document.getElementById('clinical-review-nurse')?.focus());
                 }
               }} />
-            <button type="submit">Save</button>
+            <button type="submit">{l10n("Save")}</button>
           </form>
         ) : (
           <button type="button" id="clinical-review-nurse" className="clinical-review-nurse"
@@ -1010,45 +1010,45 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
             <span className="clinical-review-avatar"><UserRound /></span>{nurseName}
           </button>
         )} />
-      <nav className="clinical-review-tabs" aria-label="Review filters" ref={filterRef}>
+      <nav className="clinical-review-tabs" aria-label={l10n("Review filters")} ref={filterRef}>
         {filters.map((tab) => (
           <button key={tab.id} type="button" aria-pressed={filter === tab.id} onClick={() => setFilter(tab.id)}>
-            {tab.label}<span className="clinical-review-count">{tab.count}</span>
+            {l10n(tab.label)}<span className="clinical-review-count">{tab.count}</span>
           </button>
         ))}
       </nav>
       {renderGroup('Priority attention', CircleAlert, priorityAttentionItems, 'priority')}
       {filter === 'resolved' ? (
         resolvedItems.length ? renderGroup('History', Check, resolvedItems, 'history')
-          : <p className="clinical-review-empty">No resolved concerns this shift.</p>
+          : <p className="clinical-review-empty">{l10n("No resolved concerns this shift.")}</p>
       ) : (
         <>
           {renderGroup('Needs review', Clock, otherPendingItems, 'pending')}
           {filter === 'all' && renderGroup('Monitoring', HeartPulse, otherMonitoringItems)}
-          {filter === 'all' && totalActiveCount === 0 && <p className="clinical-review-empty">No active concerns.</p>}
+          {filter === 'all' && totalActiveCount === 0 && <p className="clinical-review-empty">{l10n("No active concerns.")}</p>}
           {filter === 'pending' && !pendingItemsAll.length && !priorityAttentionItems.length && (
-            <p className="clinical-review-empty">No concerns need review.</p>
+            <p className="clinical-review-empty">{l10n("No concerns need review.")}</p>
           )}
         </>
       )}
       <WorkspaceFooter>
         {confirmReset ? (
           <div className="clinical-review-reset">
-            <span>Reset all demo records and handoff entries?</span>
-            <button type="button" onClick={onResetDemo}>Confirm reset</button>
-            <button type="button" onClick={() => setConfirmReset(false)}>Cancel</button>
+            <span>{l10n("Reset all demo records and handoff entries?")}</span>
+            <button type="button" onClick={onResetDemo}>{l10n("Confirm reset")}</button>
+            <button type="button" onClick={() => setConfirmReset(false)}>{l10n("Cancel")}</button>
           </div>
         ) : (
-          <Button variant="quiet" onClick={() => setConfirmReset(true)}>Reset demo</Button>
+          <Button variant="quiet" onClick={() => setConfirmReset(true)}>{l10n("Reset demo")}</Button>
         )}
       </WorkspaceFooter>
-      <div className="sr-only" role="status">{announcement}</div>
+      <div className="sr-only" role="status">{l10n(announcement)}</div>
       <dialog className="clinical-review-dialog cb-motion-dialog" ref={dialogRef} aria-labelledby="clinical-review-dialog-title"
         onClose={handleDialogClose}>
         {selectedConcern && renderConcernDetail(selectedConcern)}
       </dialog>
       {detailCodeConfig && detailTierMeta && (
-        <dialog className="clinical-review-criteria" ref={criteriaRef} aria-label="Stop & Watch clinical criteria"
+        <dialog className="clinical-review-criteria" ref={criteriaRef} aria-label={l10n("Stop & Watch clinical criteria")}
           onClose={() => setDetailCodeId(null)}>
           <StopAndWatchDetailModal config={detailCodeConfig} tierMeta={detailTierMeta}
             onClose={() => criteriaRef.current?.close()} />

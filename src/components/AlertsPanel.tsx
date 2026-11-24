@@ -1,3 +1,4 @@
+import { l10n } from '../utils/localization';
 import React, { useId, useState } from 'react';
 import { Check, ChevronDown, CircleAlert } from 'lucide-react';
 import { AlertThresholds, DeterministicAlert, HandoffRow, NurseEscalation } from '../types/handoff';
@@ -37,17 +38,17 @@ export const AlertsPanel: React.FC<AlertsPanelProps> = ({
     return (
       <div key={alert.id} className="cb-handoff-alert" data-tone={urgent ? 'urgent' : undefined}>
         {urgent && <CircleAlert aria-hidden="true" className="cb-alert-symbol" />}
-        <div className="cb-alert-copy"><strong>{alert.room} · {alert.title}</strong>
+        <div className="cb-alert-copy"><strong>{alert.room} · {l10n(alert.title)}</strong>
           <span> · {alert.message}</span></div>
         <div className="cb-alert-actions">
           {!isLocked && alert.type === 'missing_care' && (
-            <Button variant="quiet" onClick={() => onMarkPerCarePlan(alert.room)}>Mark routine care</Button>
+            <Button variant="quiet" onClick={() => onMarkPerCarePlan(alert.room)}>{l10n("Mark routine care")}</Button>
           )}
           <Button variant="quiet" onClick={() => onSelectResident(alert.room)}
-            aria-label={'Open room ' + alert.room}>Open</Button>
+            aria-label={l10n('Open room {{room}}', { room: alert.room })}>{l10n("Open")}</Button>
           {!isLocked && urgent && !rows.find((row) => row.room === alert.room)?.toldNurse?.value && (
             <Button variant="quiet" onClick={() => onQuickNotifyNurse(alert.room)}
-              aria-label={'Mark told nurse for room ' + alert.room}>Mark told nurse</Button>
+              aria-label={l10n('Mark told nurse for room {{room}}', { room: alert.room })}>{l10n("Mark told nurse")}</Button>
           )}
         </div>
       </div>
@@ -55,29 +56,29 @@ export const AlertsPanel: React.FC<AlertsPanelProps> = ({
   };
 
   if (!concerns.length && !checks.length) return (
-    <p className="cb-checks-clear"><Check /> No shift alerts</p>
+    <p className="cb-checks-clear"><Check />{" " + l10n("No shift alerts")}</p>
   );
 
   return (
-    <section aria-label="Clinical alerts" className="cb-panel cb-handoff-alerts">
+    <section aria-label={l10n("Clinical alerts")} className="cb-panel cb-handoff-alerts">
       {concerns.map(({ row, status, title, summary, notified, unverified }) => (
         <div key={row.room} className="cb-handoff-alert" data-tone={status.isUrgent ? 'urgent' : 'warning'}>
           <CircleAlert aria-hidden="true" className="cb-alert-symbol" />
           <div className="cb-alert-copy">
-            <strong>{row.room} · {title}</strong>
-            {summary && <span> · {summary}</span>}
-            {unverified && <span> · Unverified handoff entries</span>}
+            <strong>{row.room} · <bdi>{l10n(title)}</bdi></strong>
+            {summary && <span> · {l10n(summary)}</span>}
+            {unverified && <span>{" " + l10n("· Unverified handoff entries")}</span>}
             {(status.needsNurseAction || notified === 'RN notification unverified') && (
-              <span> · {notified === 'RN notification unverified' ? notified : status.nurseLabel}</span>
+              <span> · {notified === 'RN notification unverified' ? l10n(notified) : status.nurseLabel}</span>
             )}
           </div>
           <div className="cb-alert-actions">
             <Button variant="quiet" onClick={() => onSelectResident(row.room)}
-              aria-label={'Open room ' + row.room}>Open</Button>
+              aria-label={l10n('Open room {{room}}', { room: row.room })}>{l10n("Open")}</Button>
             {!isLocked && alerts.some((alert) => alert.room === row.room && alert.severity === 'critical_nurse') &&
               notified !== 'RN notified' && (
               <Button variant="quiet" onClick={() => onQuickNotifyNurse(row.room)}
-                aria-label={'Mark told nurse for room ' + row.room}>Mark told nurse</Button>
+                aria-label={l10n('Mark told nurse for room {{room}}', { room: row.room })}>{l10n("Mark told nurse")}</Button>
             )}
           </div>
         </div>
@@ -87,7 +88,7 @@ export const AlertsPanel: React.FC<AlertsPanelProps> = ({
         <div>
           <button type="button" className="cb-checks-toggle" aria-expanded={showChecks} aria-controls={checksId}
             onClick={() => setShowChecks(!showChecks)}>
-            Other checks <span>{otherChecks.length}</span> <ChevronDown className="cb-disclosure-icon" aria-hidden="true" />
+            {l10n("Other checks") + " "}<span>{otherChecks.length}</span> <ChevronDown className="cb-disclosure-icon" aria-hidden="true" />
           </button>
           <div id={checksId} hidden={!showChecks}>
             {otherChecks.map(renderCheck)}

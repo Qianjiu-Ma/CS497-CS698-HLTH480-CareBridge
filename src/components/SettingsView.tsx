@@ -1,3 +1,5 @@
+import { SelectPopover } from './SelectPopover';
+import { l10n } from '../utils/localization';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ChevronLeft, ChevronRight, Info, Lock, Mic, Printer, ShieldCheck, SlidersVertical, TriangleAlert,
@@ -35,7 +37,7 @@ type Dialog = { kind: 'pause' | 'discard-home' | 'discard' | 'restore' | 'print'
 
 const tierNames: Record<SeverityTier, string> = { 1: 'Monitor', 2: 'This shift', 3: 'Report now' };
 const tierOrder = [3, 2, 1] as const;
-const tierText = (tier: SeverityTier) => 'Tier ' + tier + ' · ' + tierNames[tier];
+const tierText = (tier: SeverityTier) => l10n('Tier {{tier}} · {{name}}', { tier, name: l10n(tierNames[tier]) });
 const speechDefault = DEFAULT_THRESHOLDS.silenceBufferSeconds ?? 0.8;
 
 const information = {
@@ -187,7 +189,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ thresholds, onUpdate
     <button type="button" className="setting" data-setting={label} aria-haspopup={opensDialog ? 'dialog' : undefined}
       onClick={(event) => action(event.currentTarget)}>
       <span className={'tile' + (tone ? ' ' + tone : '')}><Icon /></span>
-      <span className="name">{label}</span>
+      <span className="name">{l10n(label)}</span>
       {value && <span className="value">{value}</span>}
       <ChevronRight className="chev" />
     </button>
@@ -197,24 +199,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ thresholds, onUpdate
     const codes = STOP_AND_WATCH_CODES.filter((code) => (currentTiers[code.id] ?? code.defaultTier) === tier);
     return codes.length > 0 && (
       <section key={tier}>
-        <h2 className="group-label">{tierText(tier)}{draft ? ' · Current group' : ''}</h2>
+        <h2 className="group-label">{tierText(tier)}{draft ? l10n(" · Current group") : ''}</h2>
         <div className="cb-panel group">{codes.map((code) => (
           <div className="rule-row" key={code.id} data-rule-id={code.id}>
             <span className="code">{code.letter}</span>
-            <span className="name">{code.shortLabel}</span>
-            <button type="button" className="info" aria-label={'About ' + code.shortLabel} aria-haspopup="dialog"
+            <span className="name">{l10n(code.shortLabel)}</span>
+            <button type="button" className="info" aria-label={l10n('About {{code}}', { code: l10n(code.shortLabel) })} aria-haspopup="dialog"
               onClick={(event) => openDialog({ kind: 'info', code }, event.currentTarget)}><Info /></button>
             {draft?.kind === 'rules' ? (
-              <select className="cb-field" aria-label={'Priority for ' + code.shortLabel} value={draft.values[code.id]}
-                onChange={(event) => {
-                  const next = Number(event.target.value);
-                  if (next === 1 || next === 2 || next === 3) {
-                    setDraft({ kind: draft.kind, values: { ...draft.values, [code.id]: next } });
-                  }
-                }}>
-                {([1, 2, 3] as const).map((option) => <option key={option} value={option}>{tierText(option)}</option>)}
-              </select>
-            ) : <span className={'tier t' + tier}>{tierNames[tier]}</span>}
+              <SelectPopover label={l10n('Priority for {{code}}', { code: l10n(code.shortLabel) })}
+                value={draft.values[code.id]}
+                onChange={(value) => setDraft({ kind: draft.kind, values: { ...draft.values, [code.id]: value } })}
+                options={([1, 2, 3] as const).map((value) => ({ value, label: tierText(value) }))} />
+            ) : <span className={'tier t' + tier}>{l10n(tierNames[tier])}</span>}
           </div>
         ))}</div>
       </section>
@@ -225,8 +222,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ thresholds, onUpdate
     <div className="cb-panel group">
       {metrics.map(({ key, name, unit, ...metric }) => <div className="rule-row" key={key}>
         <span className="name">
-          {draft?.kind === 'thresholds' ? <label htmlFor={'settings-' + key}>{name}</label> : name}
-          {'storedOnly' in metric && <small className="stored muted">Stored only</small>}
+          {draft?.kind === 'thresholds' ? <label htmlFor={'settings-' + key}>{l10n(name)}</label> : l10n(name)}
+          {'storedOnly' in metric && <small className="stored muted">{l10n("Stored only")}</small>}
         </span>
         {draft?.kind === 'thresholds' ? <>
           <input className="cb-field" id={'settings-' + key} type="number" inputMode="decimal" min="0" step="any"
@@ -252,12 +249,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ thresholds, onUpdate
       case 'pause':
         title = 'Speech pause';
         content = <>
-          <p className="muted">Wait this long during a pause before processing speech.</p>
-          <output htmlFor="settings-pause" className="pause-value">{pauseDraft.toFixed(1)} s</output>
-          <input id="settings-pause" aria-label="Speech pause in seconds" type="range" min="0.5" max="2" step="0.1"
+          <p className="muted">{l10n("Wait this long during a pause before processing speech.")}</p>
+          <output htmlFor="settings-pause" className="pause-value">{pauseDraft.toFixed(1)}{" " + l10n("s")}</output>
+          <input id="settings-pause" aria-label={l10n("Speech pause in seconds")} type="range" min="0.5" max="2" step="0.1"
             value={pauseDraft} onChange={(event) => setPauseDraft(Number(event.target.value))} />
-          <div className="pause-ends muted"><span>0.5 s · Shorter</span><span>2.0 s · Longer</span></div>
-          <p className="muted">Sentence-ending punctuation starts processing immediately.</p>
+          <div className="pause-ends muted"><span>{l10n("0.5 s · Shorter")}</span><span>{l10n("2.0 s · Longer")}</span></div>
+          <p className="muted">{l10n("Sentence-ending punctuation starts processing immediately.")}</p>
         </>;
         confirmLabel = 'Save';
         confirm = () => {
@@ -269,7 +266,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ thresholds, onUpdate
       case 'discard-home':
       case 'discard':
         title = 'Discard draft?';
-        content = <p>Unsaved changes will be lost.</p>;
+        content = <p>{l10n("Unsaved changes will be lost.")}</p>;
         cancelLabel = 'Keep editing';
         confirmLabel = 'Discard';
         confirm = () => {
@@ -281,16 +278,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ thresholds, onUpdate
         break;
       case 'restore':
         title = 'Restore demo defaults?';
-        content = <p>This replaces the draft for this section with its original demo values. Review changes before applying.</p>;
+        content = <p>{l10n("This replaces the draft for this section with its original demo values. Review changes before applying.")}</p>;
         confirmLabel = 'Restore draft';
         confirm = restoreDraft;
         break;
       case 'review':
         title = 'Review demo changes';
         content = <>
-          <p className="muted">Changes apply to this browser’s demo configuration.</p>
+          <p className="muted">{l10n("Changes apply to this browser’s demo configuration.")}</p>
           {dialog.changes.map(({ name, before, after }) => (
-            <div className="diff" key={name}><strong>{name}</strong><span>{before} → {after}</span></div>
+            <div className="diff" key={name}><strong>{l10n(name)}</strong><span>{before} → {after}</span></div>
           ))}
         </>;
         cancelLabel = 'Back';
@@ -303,7 +300,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ thresholds, onUpdate
         break;
       case 'print':
         title = 'Print blank handoff sheet';
-        content = <p>Open the existing blank paper handoff in your browser’s print dialog.</p>;
+        content = <p>{l10n("Open the existing blank paper handoff in your browser’s print dialog.")}</p>;
         confirmLabel = 'Print blank sheet';
         confirm = () => {
           closeDialog();
@@ -312,19 +309,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ thresholds, onUpdate
         break;
       case 'info':
         title = dialog.code.shortLabel;
-        content = <><p>{dialog.code.plainLanguageDescription}</p>
-          <p className="muted">Rule ID: {dialog.code.id}</p>
+        content = <><p>{l10n(dialog.code.plainLanguageDescription)}</p>
+          <p className="muted">{l10n("Rule ID:") + " "}{dialog.code.id}</p>
         </>;
         confirmLabel = 'Done';
         confirm = closeDialog;
         break;
     }
     return <>
-      <h2 id="settings-modal-title">{title}</h2>
+      <h2 id="settings-modal-title">{l10n(title)}</h2>
       {content}
       <div className="actions">
-        {dialog.kind !== 'info' && <Button onClick={closeDialog}>{cancelLabel}</Button>}
-        <Button variant="primary" onClick={confirm}>{confirmLabel}</Button>
+        {dialog.kind !== 'info' && <Button onClick={closeDialog}>{l10n(cancelLabel)}</Button>}
+        <Button variant="primary" onClick={confirm}>{l10n(confirmLabel)}</Button>
       </div>
     </>;
   };
@@ -335,58 +332,58 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ thresholds, onUpdate
     <div className="carebridge-settings" ref={settingsRoot}>
       {page === 'home' ? (
         <>
-          <PageHeader ref={headingRef} title="Settings" subtitle="Preferences and prototype configuration" />
+          <PageHeader ref={headingRef} title={l10n("Settings")} subtitle={l10n("Preferences and prototype configuration")} />
           <section aria-labelledby="settings-preferences">
-            <h2 className="group-label" id="settings-preferences">Preferences</h2>
+            <h2 className="group-label" id="settings-preferences">{l10n("Preferences")}</h2>
             <div className="cb-panel group">{row('Speech pause', Mic, (trigger) => {
               setPauseDraft(speechPause);
               openDialog({ kind: 'pause' }, trigger);
             }, speechPause.toFixed(1) + ' s', undefined, true)}</div>
           </section>
           <section aria-labelledby="settings-clinical">
-            <h2 className="group-label" id="settings-clinical">Clinical configuration</h2>
+            <h2 className="group-label" id="settings-clinical">{l10n("Clinical configuration")}</h2>
             <div className="cb-panel group">
-              {row('Stop & Watch rules', ShieldCheck, () => navigate('rules'), STOP_AND_WATCH_CODES.length + ' rules', 'amber')}
-              {row('Alert thresholds', SlidersVertical, () => navigate('thresholds'), metrics.length + ' thresholds', 'neutral')}
+              {row('Stop & Watch rules', ShieldCheck, () => navigate('rules'), l10n('Rules: {{count}}', { count: STOP_AND_WATCH_CODES.length }), 'amber')}
+              {row('Alert thresholds', SlidersVertical, () => navigate('thresholds'), l10n('Thresholds: {{count}}', { count: metrics.length }), 'neutral')}
             </div>
-            <p className="muted group-note">Prototype rules · Not clinically approved</p>
+            <p className="muted group-note">{l10n("Prototype rules · Not clinically approved")}</p>
           </section>
           <section aria-labelledby="settings-support">
-            <h2 className="group-label" id="settings-support">Support</h2>
+            <h2 className="group-label" id="settings-support">{l10n("Support")}</h2>
             <div className="cb-panel group">
               {row('Print blank handoff sheet', Printer, (trigger) => openDialog({ kind: 'print' }, trigger), undefined, 'neutral', true)}
               {row('Privacy & safety', Lock, () => navigate('privacy'), undefined, 'neutral')}
               {row('About CareBridge', Info, () => navigate('about'), undefined, 'neutral')}
             </div>
           </section>
-          <WorkspaceFooter><span>CareBridge · Prototype</span></WorkspaceFooter>
+          <WorkspaceFooter><span>{l10n("CareBridge · Prototype")}</span></WorkspaceFooter>
         </>
       ) : (
         <>
           <button type="button" className="back" onClick={(event) => {
             if (draft) openDialog({ kind: 'discard-home' }, event.currentTarget);
             else navigate('home');
-          }}><ChevronLeft /> Settings</button>
-          <PageHeader ref={headingRef} title={pageTitle} className="detail-head"
-            actions={clinical && !draft && <Button ref={editButtonRef} onClick={edit}>Edit demo rules</Button>} />
+          }}><ChevronLeft />{" " + l10n("Settings")}</button>
+          <PageHeader ref={headingRef} title={l10n(pageTitle)} className="detail-head"
+            actions={clinical && !draft && <Button ref={editButtonRef} onClick={edit}>{l10n("Edit demo rules")}</Button>} />
           {clinical ? <>
             <div className="notice"><TriangleAlert /><span>
-              Prototype configuration only. {page === 'rules'
-                ? 'These tiers are separate from official INTERACT classifications. '
-                : 'These values are not approved clinical limits. '}
-              Clinical leadership approval is required before real use.
+            {l10n("Prototype configuration only.") + " "}{page === 'rules'
+                ? l10n("These tiers are separate from official INTERACT classifications. ")
+                : l10n("These values are not approved clinical limits. ")}
+              {l10n("Clinical leadership approval is required before real use.")}
             </span></div>
             {page === 'rules' ? renderRules() : renderThresholds()}
             {draft && <div className="actions">
-              <Button variant="quiet" onClick={(event) => openDialog({ kind: 'restore' }, event.currentTarget)}>Restore demo defaults</Button>
+              <Button variant="quiet" onClick={(event) => openDialog({ kind: 'restore' }, event.currentTarget)}>{l10n("Restore demo defaults")}</Button>
               <div className="actions-right">
-                <Button onClick={(event) => openDialog({ kind: 'discard' }, event.currentTarget)}>Cancel</Button>
-                <Button variant="primary" onClick={(event) => review(event.currentTarget)}>Review changes</Button>
+                <Button onClick={(event) => openDialog({ kind: 'discard' }, event.currentTarget)}>{l10n("Cancel")}</Button>
+                <Button variant="primary" onClick={(event) => review(event.currentTarget)}>{l10n("Review changes")}</Button>
               </div>
             </div>}
           </> : (page === 'privacy' || page === 'about') && <div className="group information">
             {information[page].map(([title, copy]) => <section className="detail-text" key={title}>
-              <h2>{title}</h2><p className="muted">{copy}</p>
+              <h2>{title}</h2><p className="muted">{l10n(copy)}</p>
             </section>)}
           </div>}
         </>
@@ -396,7 +393,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ thresholds, onUpdate
         const target = openerRef.current;
         if (target?.isConnected) target.focus();
       }}>{modal()}</dialog>
-      <StatusToast>{toast}</StatusToast>
+      <StatusToast>{l10n(toast)}</StatusToast>
     </div>
   );
 };

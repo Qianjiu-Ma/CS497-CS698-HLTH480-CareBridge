@@ -1,3 +1,4 @@
+import { l10n, localizedShift } from '../utils/localization';
 import React, { useState, useEffect } from 'react';
 import { ControlledDialog } from './WorkspaceUi';
 import {
@@ -103,24 +104,24 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
   };
 
   return (
-    <ControlledDialog open={isOpen} onDismiss={onClose} label="Confirm and submit shift handoff" className="cb-review-modal">
+    <ControlledDialog open={isOpen} onDismiss={onClose} label={l10n("Confirm and submit shift handoff")} className="cb-review-modal">
       <div className="bg-white rounded-xl border border-slate-200 p-5 sm:p-6 space-y-4 text-xs text-slate-800">
       {/* Header */}
       <div className="flex items-start justify-between pb-3 border-b border-slate-200">
         <div>
           <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
             <FileCheck className="w-5 h-5 text-teal-700" />
-            <span>Confirm &amp; Submit Shift Handoff</span>
+            <span>{l10n("Confirm & Submit Shift Handoff")}</span>
           </h2>
           <div className="text-slate-500 mt-0.5 font-mono tabular-nums">
-            {header.unit} · {header.shift} · {header.date}
+            {header.unit} · {localizedShift(header.shift)} · {header.date}
           </div>
         </div>
         <button
           type="button"
           onClick={onClose}
           className="text-slate-400 hover:text-slate-700 cursor-pointer p-1 rounded-lg hover:bg-slate-100"
-          title="Close (Esc)"
+          title={l10n("Close (Esc)")}
         >
           <X className="w-5 h-5" />
         </button>
@@ -129,17 +130,17 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
       {/* Shift Sign-off Overview */}
       <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
         <div>
-          <span className="text-slate-500 font-medium block text-[11px]">Outgoing Staff</span>
+          <span className="text-slate-500 font-medium block text-[11px]">{l10n("Outgoing Staff")}</span>
           <span className="font-semibold text-slate-900">{header.outgoingPsw}</span>
         </div>
         <div>
-          <span className="text-slate-500 font-medium block text-[11px]">Incoming Staff</span>
+          <span className="text-slate-500 font-medium block text-[11px]">{l10n("Incoming Staff")}</span>
           <span className="font-semibold text-slate-900">{header.incomingPsw}</span>
         </div>
         <div>
-          <span className="text-slate-500 font-medium block text-[11px]">Residents</span>
+          <span className="text-slate-500 font-medium block text-[11px]">{l10n("Residents")}</span>
           <span className="font-semibold text-slate-900 font-mono tabular-nums">
-            {rows.length} Assigned
+            {rows.length}{" " + l10n("Assigned")}
           </span>
         </div>
       </div>
@@ -147,7 +148,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
       {/* Resident Summary */}
       <div className="space-y-2">
         <div className="font-semibold text-slate-700 uppercase tracking-wider text-[11px]">
-          Resident Changes &amp; Follow-Ups
+          {l10n("Resident Changes & Follow-Ups")}
         </div>
         <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-56 overflow-y-auto">
           {evaluatedRows.map(({ row: r, codes, severity, told }) => {
@@ -179,7 +180,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
                         ) : (
                           <Info className="w-3 h-3" />
                         )}
-                        <span>{tierMeta.label}</span>
+                        <span>{l10n(tierMeta.label)}</span>
                       </span>
                     )}
                   </div>
@@ -200,7 +201,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
 
                   {hasNextNote && (
                     <div className="text-teal-800 font-medium">
-                      Next Shift: {r.notDoneNextShift?.value}
+                      {l10n("Next Shift:") + " "}{r.notDoneNextShift?.value}
                     </div>
                   )}
                   {reqTasks.length > 0 && (
@@ -214,30 +215,30 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
                   )}
                   {!hasChange && !hasNextShift && (
                     <div className="text-slate-500 text-[11px]">
-                      Care delivered per care plan.
+                      {l10n("Care delivered per care plan.")}
                     </div>
                   )}
                 </div>
 
-                <div className="shrink-0 text-right">
+                <div className="shrink-0 text-end">
                   {told ? (
                     <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded font-semibold text-[11px] inline-flex items-center gap-1">
                       <UserCheck className="w-3 h-3" />
-                      <span>{r.nurseInitials?.value || 'RN'}</span>
+                      <span>{r.nurseInitials?.value || l10n("RN")}</span>
                     </span>
                   ) : severity?.effectiveTier === 3 ? (
                     <span className="text-purple-950 bg-purple-100 border border-purple-300 px-2 py-0.5 rounded font-semibold text-[11px] inline-flex items-center gap-1">
                       <OctagonAlert className="w-3 h-3 text-purple-700" />
-                      <span>Notify NOW</span>
+                      <span>{l10n("Notify NOW")}</span>
                     </span>
                   ) : severity?.effectiveTier === 2 ? (
                     <span className="text-amber-950 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded font-semibold text-[11px] inline-flex items-center gap-1">
                       <AlertTriangle className="w-3 h-3 text-amber-700" />
-                      <span>Not Notified</span>
+                      <span>{l10n("Not Notified")}</span>
                     </span>
                   ) : (
                     <span className="text-slate-400 text-[11px]">
-                      {codes.length > 0 ? 'Monitor' : 'Routine'}
+                      {codes.length > 0 ? l10n("Monitor") : l10n("Routine")}
                     </span>
                   )}
                 </div>
@@ -249,7 +250,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
 
       {anythingElse && (
         <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs">
-          <span className="font-semibold text-slate-700">Unit Note:</span>{' '}
+          <span className="font-semibold text-slate-700">{l10n("Unit Note:")}</span>{' '}
           <span className="text-slate-800">{anythingElse}</span>
         </div>
       )}
@@ -261,10 +262,10 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
             <OctagonAlert className="w-5 h-5 text-purple-700 shrink-0 mt-0.5" />
             <div className="flex-1 space-y-2">
               <h4 className="font-bold text-purple-950 text-xs uppercase tracking-wide">
-                Submission Blocked: Tier 3 – Report to Nurse Now
+                {l10n("Submission Blocked: Tier 3 – Report to Nurse Now")}
               </h4>
               <p className="text-purple-900 leading-relaxed">
-                Notify the Charge Nurse immediately and record their initials before submitting. <strong>Overrides are not permitted for Tier 3.</strong>
+                {l10n("Notify the Charge Nurse immediately and record their initials before submitting.") + " "}<strong>{l10n("Overrides are not permitted for Tier 3.")}</strong>
               </p>
               <div className="space-y-1.5">
                 {unnotifiedTier3.map(({ row: u, codes }) => (
@@ -273,7 +274,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
                     className="flex flex-wrap items-center justify-between gap-2 bg-white border border-purple-200 rounded-lg p-2"
                   >
                     <span className="font-semibold text-purple-950">
-                      Rm {u.room} ({u.residentName}): {codes.map(formatCodeChip).join(', ')}
+                      {l10n("Rm") + " "}{u.room} ({u.residentName}): {codes.map(formatCodeChip).join(', ')}
                     </span>
                     {onGoToResident && (
                       <button
@@ -284,7 +285,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
                         }}
                         className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-700 hover:bg-purple-800 text-white rounded text-[11px] font-semibold cursor-pointer"
                       >
-                        <span>Go to Rm {u.room}</span>
+                        <span>{l10n("Go to Rm") + " "}{u.room}</span>
                         <ArrowRight className="w-3 h-3" />
                       </button>
                     )}
@@ -303,7 +304,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
             <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
             <div className="flex-1 space-y-2">
               <h4 className="font-bold text-amber-950 text-xs uppercase tracking-wide">
-                Tier 2 Warning – Charge Nurse Notification Pending
+                {l10n("Tier 2 Warning – Charge Nurse Notification Pending")}
               </h4>
               <div className="space-y-1.5">
                 {unnotifiedTier2.map(({ row: u, codes }) => (
@@ -312,7 +313,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
                     className="flex flex-wrap items-center justify-between gap-2 bg-white border border-amber-200 rounded-lg p-2"
                   >
                     <span className="font-semibold text-amber-950">
-                      Rm {u.room} ({u.residentName}): {codes.map(formatCodeChip).join(', ')}
+                      {l10n("Rm") + " "}{u.room} ({u.residentName}): {codes.map(formatCodeChip).join(', ')}
                     </span>
                     {onGoToResident && (
                       <button
@@ -323,7 +324,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
                         }}
                         className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-700 hover:bg-amber-800 text-white rounded text-[11px] font-semibold cursor-pointer"
                       >
-                        <span>Go to Rm {u.room}</span>
+                        <span>{l10n("Go to Rm") + " "}{u.room}</span>
                         <ArrowRight className="w-3 h-3" />
                       </button>
                     )}
@@ -342,7 +343,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
                 className="mt-0.5 w-4 h-4 text-amber-700 rounded border-amber-300 focus:ring-amber-700"
               />
               <span className="text-amber-950 font-semibold leading-tight">
-                Submit with Clinical Override Reason (permanently logged in EMR audit trail)
+                {l10n("Submit with Clinical Override Reason (permanently logged in EMR audit trail)")}
               </span>
             </label>
 
@@ -351,7 +352,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
                 type="text"
                 value={overrideReason}
                 onChange={(e) => setOverrideReason(e.target.value)}
-                placeholder="e.g. Charge Nurse was in an emergency; verbal update given in hallway."
+                placeholder={l10n("e.g. Charge Nurse was in an emergency; verbal update given in hallway.")}
                 className="w-full text-xs p-2 bg-white border border-amber-300 rounded-lg text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
               />
             )}
@@ -364,7 +365,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
         <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5 text-xs">
           <div className="font-semibold text-slate-900 flex items-center gap-1.5">
             <Info className="w-4 h-4 text-teal-700 shrink-0" />
-            <span>Documentation &amp; Human Review Check</span>
+            <span>{l10n("Documentation & Human Review Check")}</span>
           </div>
 
           {(missingDocAlerts.length > 0 || bmOverdueAlerts.length > 0) && (
@@ -375,8 +376,8 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
                   className="flex flex-wrap items-center justify-between gap-2 bg-rose-50/70 border border-rose-200 rounded-lg px-2.5 py-1.5 text-rose-950"
                 >
                   <span>
-                    <span className="font-semibold">Rm {a.room} ({a.residentName}):</span>{' '}
-                    {a.title}
+                    <span className="font-semibold">{l10n("Rm") + " "}{a.room} ({a.residentName}):</span>{' '}
+                    {l10n(a.title)}
                   </span>
                   {onGoToResident && (
                     <button
@@ -387,7 +388,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
                       }}
                       className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-800 hover:underline cursor-pointer"
                     >
-                      <span>Go to Rm {a.room}</span>
+                      <span>{l10n("Go to Rm") + " "}{a.room}</span>
                       <ArrowRight className="w-3 h-3" />
                     </button>
                   )}
@@ -399,7 +400,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
                   className="flex flex-wrap items-center justify-between gap-2 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800"
                 >
                   <span>
-                    <span className="font-semibold">Rm {a.room} ({a.residentName}):</span>{' '}
+                    <span className="font-semibold">{l10n("Rm") + " "}{a.room} ({a.residentName}):</span>{' '}
                     {a.title}
                   </span>
                   {onGoToResident && (
@@ -411,7 +412,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
                       }}
                       className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-800 hover:underline cursor-pointer"
                     >
-                      <span>Go to Rm {a.room}</span>
+                      <span>{l10n("Go to Rm") + " "}{a.room}</span>
                       <ArrowRight className="w-3 h-3" />
                     </button>
                   )}
@@ -424,8 +425,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
             <div className="bg-amber-50/80 border border-amber-200 rounded-lg p-2.5 space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2 text-amber-950">
                 <span className="font-semibold">
-                  Unconfirmed AI-extracted notes ({pendingReviewRooms.length} resident
-                  {pendingReviewRooms.length > 1 ? 's' : ''}):
+                {l10n('Residents with unconfirmed AI-extracted notes: {{count}}', { count: pendingReviewRooms.length })}
                 </span>
                 <div className="flex flex-wrap items-center gap-1.5">
                   {pendingReviewRooms.map(({ row: pr }) =>
@@ -439,7 +439,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
                         }}
                         className="px-2 py-0.5 bg-white hover:bg-amber-100 border border-amber-300 rounded text-[11px] font-semibold text-amber-950 cursor-pointer"
                       >
-                        Rm {pr.room}
+                        {l10n("Rm") + " "}{pr.room}
                       </button>
                     ) : null
                   )}
@@ -454,7 +454,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
                   className="mt-0.5 w-4 h-4 text-teal-700 rounded border-amber-300 focus:ring-teal-700"
                 />
                 <span className="font-medium leading-tight">
-                  I have reviewed all pending AI-extracted items against the residents&apos; actual care.
+                  {l10n("I have reviewed all pending AI-extracted items against the residents' actual care.")}
                 </span>
               </label>
             </div>
@@ -463,7 +463,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
       )}
 
       <p className="text-[11px] text-slate-500">
-        All alerts and severity tiers are decision support only; the Charge Nurse makes all clinical decisions.
+        {l10n("All alerts and severity tiers are decision support only; the Charge Nurse makes all clinical decisions.")}
       </p>
 
       {/* Footer Actions */}
@@ -473,7 +473,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
           onClick={onClose}
           className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg transition-colors cursor-pointer"
         >
-          Back
+          {l10n("Back")}
         </button>
 
         <button
@@ -489,8 +489,8 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
           <CheckCircle className="w-4 h-4" />
           <span>
             {hasTier3Blocker
-              ? 'Blocked by Tier 3'
-              : 'Confirm & Submit Handoff'}
+              ? l10n("Blocked by Tier 3")
+              : l10n("Confirm & Submit Handoff")}
           </span>
         </button>
       </div>

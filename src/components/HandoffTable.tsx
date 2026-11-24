@@ -1,3 +1,5 @@
+import { l10n } from '../utils/localization';
+import { ClinicalText } from './ClinicalText';
 import React, { useState, useEffect, useRef } from 'react';
 import { AlertThresholds, HandoffRow } from '../types/handoff';
 import {
@@ -17,9 +19,8 @@ import {
 import {
   SeverityTier,
 } from '../data/stopAndWatchCodes';
-import { getInstantLtcTranslation, translateBidirectional } from '../utils/translator';
 import { StopAndWatchIconBadge } from './StopAndWatchIconBadge';
-import { InterfaceLanguage, UiTranslations } from '../utils/uiTranslations';
+import type { InterfaceLanguage } from '../utils/localization';
 import { getResidentStatus } from '../utils/residentStatus';
 
 interface HandoffTableProps {
@@ -38,7 +39,7 @@ interface HandoffTableProps {
   customTiers?: Record<string, SeverityTier>;
   thresholds?: AlertThresholds;
   onSelectResident?: (room: string) => void;
-  t?: UiTranslations;
+
   interfaceLanguage?: InterfaceLanguage;
 }
 
@@ -52,7 +53,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
   customTiers,
   thresholds,
   onSelectResident,
-  t,
+
   interfaceLanguage = 'en',
 }) => {
   const [editingCell, setEditingCell] = useState<{ room: string; field: string } | null>(null);
@@ -62,10 +63,6 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
     field: string;
     quote: string;
   } | null>(null);
-  const [sheetTranslations, setSheetTranslations] = useState<Record<string, string>>({});
-  const [isTranslatingSheet, setIsTranslatingSheet] = useState<boolean>(false);
-  const sheetCacheRef = useRef<Map<string, string>>(new Map());
-
   const tableLanguage = interfaceLanguage;
 
   // Close source popover on Escape
@@ -77,72 +74,6 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
   }, [activeSourcePopover]);
-
-  // Translate table cell texts dynamically when global reading language != 'en'
-  useEffect(() => {
-    if (tableLanguage === 'en') {
-      setIsTranslatingSheet(false);
-      return;
-    }
-
-    let cancelled = false;
-    const uniqueTexts = new Set<string>();
-    rows.forEach((r) => {
-      [r.done?.value, r.notDoneNextShift?.value, r.changeNote?.value].forEach((val) => {
-        const clean = (val || '').trim();
-        if (clean && clean !== '—') uniqueTexts.add(clean);
-      });
-      (r.careRequirements || []).slice(0, 3).forEach((req) => {
-        const clean = (req.action_item || '').trim();
-        if (clean) uniqueTexts.add(clean);
-      });
-    });
-
-    const pendingTexts = Array.from(uniqueTexts).filter(
-      (txt) => !sheetCacheRef.current.has(`${tableLanguage}::${txt}`)
-    );
-
-    if (pendingTexts.length === 0) {
-      setIsTranslatingSheet(false);
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      setIsTranslatingSheet(true);
-      const updates: Record<string, string> = {};
-
-      try {
-        await Promise.all(
-          pendingTexts.map(async (txt) => {
-            const res = await translateBidirectional(txt, 'en', tableLanguage);
-            const translated =
-              res?.translatedText?.trim() || getInstantLtcTranslation(txt, tableLanguage, 'en');
-            const key = `${tableLanguage}::${txt}`;
-            sheetCacheRef.current.set(key, translated);
-            updates[key] = translated;
-          })
-        );
-        if (!cancelled) {
-          setSheetTranslations((prev) => ({ ...prev, ...updates }));
-        }
-      } catch {
-        // fallback already handled per-item
-      } finally {
-        if (!cancelled) setIsTranslatingSheet(false);
-      }
-    }, 200);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [tableLanguage, rows]);
-
-  const tSheet = (text: string): string => {
-    if (!text || tableLanguage === 'en') return text;
-    const key = `${tableLanguage}::${text.trim()}`;
-    return sheetTranslations[key] || getInstantLtcTranslation(text, tableLanguage, 'en');
-  };
 
   const toggleRowExpand = (room: string) => {
     const row = rows.find((r) => r.room === room);
@@ -203,20 +134,17 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
       <div className="px-4 py-3 bg-white border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold text-slate-900 tracking-tight">
-            All residents
+            {l10n("All residents")}
           </h2>
           <span className="text-xs text-slate-400 tabular-nums">
             · {rows.length}
           </span>
-          {isTranslatingSheet && (
-            <Loader2 className="w-3.5 h-3.5 cb-pending text-teal-700" />
-          )}
         </div>
 
         {totalPendingCount > 0 && (
           <div className="flex items-center gap-2">
             <span className="text-xs font-medium text-amber-800 tabular-nums">
-              {totalPendingCount} pending
+              {totalPendingCount}{" " + l10n("pending")}
             </span>
             {!isLocked && (
               <button
@@ -225,7 +153,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                 className="inline-flex items-center gap-1.5 px-3 py-1 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
               >
                 <CheckCheck className="w-3.5 h-3.5" />
-                <span>Accept all</span>
+                <span>{l10n("Accept all")}</span>
               </button>
             )}
           </div>
@@ -234,23 +162,23 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
 
       {/* Main Table */}
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs border-collapse">
+        <table className="w-full text-start text-xs border-collapse">
           <thead>
             <tr className="bg-slate-50/70 text-slate-500 text-[11px] font-semibold border-b border-slate-200">
-              <th className="py-2.5 px-3 w-48">Resident</th>
+              <th className="py-2.5 px-3 w-48">{l10n("Resident")}</th>
               <th className="py-2.5 px-3 min-w-[240px]">
-                {tableLanguage === 'en' ? 'Completed care' : t?.careCompletedTitle || 'Completed care'}
+                {l10n("Completed care")}
               </th>
               <th className="py-2.5 px-3 min-w-[220px]">
-                {tableLanguage === 'en' ? 'Next shift' : t?.notDoneTitle || 'Next shift'}
+                {l10n("Next shift")}
               </th>
               <th className="py-2.5 px-3 min-w-[220px]">
-                {tableLanguage === 'en' ? 'Health & changes' : t?.stopAndWatchTitle || 'Health & changes'}
+                {l10n("Health & changes")}
               </th>
               <th className="py-2.5 px-3 w-36">
-                {tableLanguage === 'en' ? 'Nurse notified' : t?.toldNurseTitle || 'Nurse notified'}
+                {l10n("Nurse notified")}
               </th>
-              <th className="py-2.5 px-3 w-24 text-right">Open</th>
+              <th className="py-2.5 px-3 w-24 text-end">{l10n("Open")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -276,9 +204,9 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                           type="button"
                           onClick={() => toggleRowExpand(row.room)}
                           aria-expanded={Boolean(row.isExpanded)}
-                          aria-label={`Toggle measurements and notes for Room ${row.room}`}
+                          aria-label={l10n("Toggle measurements and notes for Room {{p1}}", { p1: row.room })}
                           className="mt-0.5 text-slate-400 hover:text-slate-700 cursor-pointer p-0.5 rounded hover:bg-slate-100"
-                          title="Toggle measurements and notes"
+                          title={l10n("Toggle measurements and notes")}
                         >
                           {row.isExpanded ? (
                             <ChevronDown className="w-4 h-4 text-teal-700" />
@@ -290,7 +218,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                           <button
                             type="button"
                             onClick={() => onSelectResident && onSelectResident(row.room)}
-                            className="font-semibold text-slate-900 text-xs hover:text-teal-700 transition-colors text-left cursor-pointer flex items-center gap-1.5"
+                            className="font-semibold text-slate-900 text-xs hover:text-teal-700 transition-colors text-start cursor-pointer flex items-center gap-1.5"
                           >
                             <span className="tabular-nums text-slate-400">
                               {row.room}
@@ -322,13 +250,13 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                           ) : (
                             <div className="inline-flex items-center gap-1 text-[11px] text-slate-500">
                               <CheckCircle2 className="w-3 h-3 shrink-0 text-emerald-600" />
-                              <span>Routine</span>
+                              <span>{l10n("Routine")}</span>
                             </div>
                           )}
 
                           {status.hasPending && (
                             <div className="text-[11px] font-semibold text-amber-800">
-                              Review needed
+                              {l10n("Review needed")}
                             </div>
                           )}
                         </div>
@@ -343,7 +271,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                     >
                       {editingCell?.room === row.room && editingCell.field === 'done' ? (
                         <div className="space-y-1.5">
-                          <textarea
+                          <textarea dir="auto"
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
                             rows={2}
@@ -356,14 +284,14 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                               onClick={() => saveEdit(row.room, 'done')}
                               className="px-2 py-0.5 bg-teal-700 text-white rounded text-[11px] font-semibold cursor-pointer"
                             >
-                              Save
+                              {l10n("Save")}
                             </button>
                             <button
                               type="button"
                               onClick={() => setEditingCell(null)}
                               className="px-2 py-0.5 bg-slate-200 text-slate-700 rounded text-[11px] cursor-pointer"
                             >
-                              Cancel
+                              {l10n("Cancel")}
                             </button>
                           </div>
                         </div>
@@ -371,39 +299,34 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                         <div className="space-y-1">
                           {(() => {
                             const originalDone = row.done?.value || '';
-                            const displayDone =
-                              tableLanguage === 'en' ? originalDone : tSheet(originalDone);
+                            const displayDone = originalDone;
 
                             return (
+                              <>
                               <button
                                 type="button"
                                 disabled={isLocked}
                                 onClick={() => startEditing(row.room, 'done', originalDone)}
-                                className="w-full text-left cursor-pointer disabled:cursor-default text-slate-900 hover:text-slate-700 leading-snug"
-                                title={isLocked ? undefined : 'Click to edit'}
+                                className="w-full text-start cursor-pointer disabled:cursor-default text-slate-900 hover:text-slate-700 leading-snug"
+                                title={isLocked ? undefined : l10n("Click to edit")}
                               >
                                 {displayDone ? (
                                   <div>
                                     <div className="font-medium text-slate-900">{displayDone}</div>
-                                    {tableLanguage !== 'en' &&
-                                      originalDone &&
-                                      displayDone !== originalDone && (
-                                        <div className="text-[11px] text-slate-400 italic mt-0.5">
-                                          EN: {originalDone}
-                                        </div>
-                                      )}
                                   </div>
                                 ) : (
-                                  <span className="text-slate-400 italic">None recorded</span>
+                                  <span className="text-slate-400 italic">{l10n("None recorded")}</span>
                                 )}
                               </button>
+                            <ClinicalText text={originalDone} previewOnly />
+                              </>
                             );
                           })()}
 
                           {row.done?.isPendingConfirmation && (
                             <div className="flex items-center justify-between gap-1 pt-1 border-t border-amber-200/80">
                               <span className="text-[11px] font-medium text-amber-800 flex items-center gap-1">
-                                <span>Pending</span>
+                                <span>{l10n("Pending")}</span>
                                 {row.done.sourceQuote && (
                                   <button
                                     type="button"
@@ -415,7 +338,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                                       })
                                     }
                                     className="text-amber-700 hover:text-amber-900 cursor-pointer"
-                                    title="View source quote"
+                                    title={l10n("View source quote")}
                                   >
                                     <MessageSquare className="w-3 h-3" />
                                   </button>
@@ -426,7 +349,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                                   type="button"
                                   onClick={() => onAcceptCell(row.room, 'done')}
                                   className="p-1 text-emerald-700 hover:bg-emerald-100 rounded cursor-pointer"
-                                  title="Accept"
+                                  title={l10n("Accept")}
                                 >
                                   <Check className="w-3.5 h-3.5" />
                                 </button>
@@ -434,7 +357,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                                   type="button"
                                   onClick={() => onRejectCell(row.room, 'done')}
                                   className="p-1 text-rose-700 hover:bg-rose-100 rounded cursor-pointer"
-                                  title="Reject"
+                                  title={l10n("Reject")}
                                 >
                                   <X className="w-3.5 h-3.5" />
                                 </button>
@@ -457,7 +380,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                       {editingCell?.room === row.room &&
                       editingCell.field === 'notDoneNextShift' ? (
                         <div className="space-y-1.5">
-                          <textarea
+                          <textarea dir="auto"
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
                             rows={2}
@@ -470,14 +393,14 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                               onClick={() => saveEdit(row.room, 'notDoneNextShift')}
                               className="px-2 py-0.5 bg-teal-700 text-white rounded text-[11px] font-semibold cursor-pointer"
                             >
-                              Save
+                              {l10n("Save")}
                             </button>
                             <button
                               type="button"
                               onClick={() => setEditingCell(null)}
                               className="px-2 py-0.5 bg-slate-200 text-slate-700 rounded text-[11px] cursor-pointer"
                             >
-                              Cancel
+                              {l10n("Cancel")}
                             </button>
                           </div>
                         </div>
@@ -485,8 +408,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                         <div className="space-y-1.5">
                           {(() => {
                             const originalNotDone = row.notDoneNextShift?.value || '';
-                            const displayNotDone =
-                              tableLanguage === 'en' ? originalNotDone : tSheet(originalNotDone);
+                            const displayNotDone = originalNotDone;
                             const hasNote = Boolean(displayNotDone && displayNotDone !== '—');
                             const hasTasks = (row.careRequirements || []).length > 0;
 
@@ -498,8 +420,8 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                                   onClick={() =>
                                     startEditing(row.room, 'notDoneNextShift', originalNotDone)
                                   }
-                                  className="w-full text-left cursor-pointer disabled:cursor-default text-slate-400 hover:text-slate-600"
-                                  title={isLocked ? undefined : 'Click to add note'}
+                                  className="w-full text-start cursor-pointer disabled:cursor-default text-slate-400 hover:text-slate-600"
+                                  title={isLocked ? undefined : l10n("Click to add note")}
                                 >
                                   —
                                 </button>
@@ -515,36 +437,27 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                                     onClick={() =>
                                       startEditing(row.room, 'notDoneNextShift', originalNotDone)
                                     }
-                                    className="w-full text-left cursor-pointer disabled:cursor-default text-slate-900 hover:text-slate-700 leading-snug font-medium"
-                                    title={isLocked ? undefined : 'Click to edit'}
+                                    className="w-full text-start cursor-pointer disabled:cursor-default text-slate-900 hover:text-slate-700 leading-snug font-medium"
+                                    title={isLocked ? undefined : l10n("Click to edit")}
                                   >
                                     <div>{displayNotDone}</div>
-                                    {tableLanguage !== 'en' &&
-                                      originalNotDone &&
-                                      originalNotDone !== '—' &&
-                                      displayNotDone !== originalNotDone && (
-                                        <div className="text-[11px] text-slate-400 font-normal italic mt-0.5">
-                                          EN: {originalNotDone}
-                                        </div>
-                                      )}
                                   </button>
                                 )}
+                                {hasNote && <ClinicalText text={originalNotDone} previewOnly />}
 
                                 {hasTasks && (
                                   <ul className="space-y-1 pt-0.5 text-[11px] text-slate-700">
                                     {row.careRequirements!.slice(0, 3).map((req) => (
                                       <li key={req.id} className="flex items-start gap-1.5 leading-snug">
                                         <span className="text-teal-700 font-semibold shrink-0">
-                                          · {req.category}:
+                                          · {l10n(req.category)}:
                                         </span>
                                         <span
                                           className={
                                             req.completed ? 'line-through text-slate-400' : ''
                                           }
                                         >
-                                          {tableLanguage === 'en'
-                                            ? req.action_item
-                                            : tSheet(req.action_item)}
+                                          <ClinicalText text={req.action_item} />
                                         </span>
                                       </li>
                                     ))}
@@ -555,7 +468,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                                           onClick={() => onSelectResident && onSelectResident(row.room)}
                                           className="text-[11px] font-medium text-teal-700 hover:text-teal-900 cursor-pointer"
                                         >
-                                          +{row.careRequirements!.length - 3} more
+                                          +{row.careRequirements!.length - 3}{" " + l10n("more")}
                                         </button>
                                       </li>
                                     )}
@@ -571,7 +484,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                             )) && (
                             <div className="flex items-center justify-between gap-1 pt-1 border-t border-amber-200/80">
                               <span className="text-[11px] font-medium text-amber-800 flex items-center gap-1">
-                                <span>Pending</span>
+                                <span>{l10n("Pending")}</span>
                                 {row.notDoneNextShift?.sourceQuote && (
                                   <button
                                     type="button"
@@ -583,7 +496,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                                       })
                                     }
                                     className="text-amber-700 hover:text-amber-900 cursor-pointer"
-                                    title="View source quote"
+                                    title={l10n("View source quote")}
                                   >
                                     <MessageSquare className="w-3 h-3" />
                                   </button>
@@ -594,7 +507,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                                   type="button"
                                   onClick={() => onAcceptCell(row.room, 'notDoneNextShift')}
                                   className="p-1 text-emerald-700 hover:bg-emerald-100 rounded cursor-pointer"
-                                  title="Accept"
+                                  title={l10n("Accept")}
                                 >
                                   <Check className="w-3.5 h-3.5" />
                                 </button>
@@ -602,7 +515,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                                   type="button"
                                   onClick={() => onRejectCell(row.room, 'notDoneNextShift')}
                                   className="p-1 text-rose-700 hover:bg-rose-100 rounded cursor-pointer"
-                                  title="Reject"
+                                  title={l10n("Reject")}
                                 >
                                   <X className="w-3.5 h-3.5" />
                                 </button>
@@ -624,7 +537,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                     >
                       {editingCell?.room === row.room && editingCell.field === 'changeNote' ? (
                         <div className="space-y-1.5">
-                          <textarea
+                          <textarea dir="auto"
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
                             rows={2}
@@ -637,14 +550,14 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                               onClick={() => saveEdit(row.room, 'changeNote')}
                               className="px-2 py-0.5 bg-teal-700 text-white rounded text-[11px] font-semibold cursor-pointer"
                             >
-                              Save
+                              {l10n("Save")}
                             </button>
                             <button
                               type="button"
                               onClick={() => setEditingCell(null)}
                               className="px-2 py-0.5 bg-slate-200 text-slate-700 rounded text-[11px] cursor-pointer"
                             >
-                              Cancel
+                              {l10n("Cancel")}
                             </button>
                           </div>
                         </div>
@@ -664,37 +577,32 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                               ))}
                             </div>
                           ) : (
-                            <span className="text-[11px] text-slate-400">Routine care</span>
+                            <span className="text-[11px] text-slate-400">{l10n("Routine care")}</span>
                           )}
 
                           {(() => {
                             const originalChangeNote = row.changeNote?.value || '';
-                            const displayChangeNote =
-                              tableLanguage === 'en'
-                                ? originalChangeNote
-                                : tSheet(originalChangeNote);
+                            const displayChangeNote = originalChangeNote;
 
                             if (!originalChangeNote || originalChangeNote === 'No change') {
                               return null;
                             }
 
                             return (
+                              <>
                               <button
                                 type="button"
                                 disabled={isLocked}
                                 onClick={() =>
                                   startEditing(row.room, 'changeNote', originalChangeNote)
                                 }
-                                className="w-full text-left cursor-pointer disabled:cursor-default text-slate-800 hover:text-slate-600 leading-snug"
-                                title={isLocked ? undefined : 'Click to edit'}
+                                className="w-full text-start cursor-pointer disabled:cursor-default text-slate-800 hover:text-slate-600 leading-snug"
+                                title={isLocked ? undefined : l10n("Click to edit")}
                               >
                                 <div>{displayChangeNote}</div>
-                                {tableLanguage !== 'en' && displayChangeNote !== originalChangeNote && (
-                                  <div className="text-[11px] text-slate-400 italic mt-0.5">
-                                    EN: {originalChangeNote}
-                                  </div>
-                                )}
                               </button>
+                              <ClinicalText text={originalChangeNote} previewOnly />
+                              </>
                             );
                           })()}
 
@@ -702,7 +610,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                             row.changeCodes?.isPendingConfirmation) && (
                             <div className="flex items-center justify-between gap-1 pt-1 border-t border-amber-200/80">
                               <span className="text-[11px] font-medium text-amber-800 flex items-center gap-1">
-                                <span>Pending</span>
+                                <span>{l10n("Pending")}</span>
                                 {row.changeNote?.sourceQuote && (
                                   <button
                                     type="button"
@@ -714,7 +622,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                                       })
                                     }
                                     className="text-amber-700 hover:text-amber-900 cursor-pointer"
-                                    title="View source quote"
+                                    title={l10n("View source quote")}
                                   >
                                     <MessageSquare className="w-3 h-3" />
                                   </button>
@@ -725,7 +633,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                                   type="button"
                                   onClick={() => onAcceptCell(row.room, 'changeNote')}
                                   className="p-1 text-emerald-700 hover:bg-emerald-100 rounded cursor-pointer"
-                                  title="Accept"
+                                  title={l10n("Accept")}
                                 >
                                   <Check className="w-3.5 h-3.5" />
                                 </button>
@@ -733,7 +641,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                                   type="button"
                                   onClick={() => onRejectCell(row.room, 'changeNote')}
                                   className="p-1 text-rose-700 hover:bg-rose-100 rounded cursor-pointer"
-                                  title="Reject"
+                                  title={l10n("Reject")}
                                 >
                                   <X className="w-3.5 h-3.5" />
                                 </button>
@@ -769,7 +677,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                               row.toldNurse?.value ? 'text-emerald-800' : 'text-slate-600'
                             }`}
                           >
-                            {row.toldNurse?.value ? 'Notified' : 'Not told'}
+                            {row.toldNurse?.value ? l10n("Notified") : l10n("Not told")}
                           </span>
                         </label>
 
@@ -787,7 +695,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                               })
                             }
                             className="w-24 px-1.5 py-0.5 border border-slate-200 rounded text-[11px] bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-700"
-                            placeholder="RN (KL)"
+                            placeholder={l10n("RN (KL)")}
                           />
                         )}
 
@@ -797,22 +705,22 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                               status.isUrgent ? 'text-rose-800' : 'text-amber-900'
                             }`}
                           >
-                            {status.isUrgent ? 'Notify RN now' : 'Notify RN'}
+                            {status.isUrgent ? l10n("Notify RN now") : l10n("Notify RN")}
                           </div>
                         )}
                       </div>
                     </td>
 
                     {/* Column 6: Open */}
-                    <td className="py-2.5 px-3 align-top text-right">
+                    <td className="py-2.5 px-3 align-top text-end">
                       {onSelectResident && (
                         <button
                           type="button"
                           onClick={() => onSelectResident(row.room)}
                           className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-teal-800 hover:bg-teal-50 rounded-lg cursor-pointer transition-colors"
-                          title="Open resident workspace"
+                          title={l10n("Open resident workspace")}
                         >
-                          <span>Open</span>
+                          <span>{l10n("Open")}</span>
                           <ArrowRight className="w-3 h-3" />
                         </button>
                       )}
@@ -830,7 +738,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                             row.mltcDetails.qualitativeObservations?.isPendingConfirmation) && (
                             <div className="px-3 py-2 bg-amber-50/80 flex items-center justify-between gap-2 text-xs text-amber-950">
                               <span className="font-medium">
-                                AI-extracted measurements &amp; observations awaiting review
+                                {l10n("AI-extracted measurements & observations awaiting review")}
                               </span>
                               {!isLocked && (
                                 <div className="flex items-center gap-1">
@@ -840,13 +748,13 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                                     className="inline-flex items-center gap-1 px-2 py-0.5 bg-white hover:bg-emerald-50 text-emerald-800 border border-amber-300 rounded text-[11px] font-semibold cursor-pointer"
                                   >
                                     <Check className="w-3 h-3" />
-                                    <span>Confirm</span>
+                                    <span>{l10n("Confirm")}</span>
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => onRejectCell(row.room, 'mltc')}
                                     className="p-1 text-rose-700 hover:bg-rose-100 rounded cursor-pointer"
-                                    title="Dismiss pending flag"
+                                    title={l10n("Dismiss pending flag")}
                                   >
                                     <X className="w-3.5 h-3.5" />
                                   </button>
@@ -858,7 +766,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
                             <div className="p-3">
                               <label className="block text-[11px] font-medium text-slate-500 mb-1">
-                                Fluids (mL)
+                                {l10n("Fluids (mL)")}
                               </label>
                               <input
                                 type="number"
@@ -879,7 +787,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
 
                             <div className="p-3">
                               <label className="block text-[11px] font-medium text-slate-500 mb-1">
-                                Weight (kg)
+                                {l10n("Weight (kg)")}
                               </label>
                               <input
                                 type="number"
@@ -901,7 +809,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
 
                             <div className="p-3">
                               <label className="block text-[11px] font-medium text-slate-500 mb-1">
-                                Bowel movement
+                                {l10n("Bowel movement")}
                               </label>
                               <div className="flex items-center gap-1.5">
                                 <input
@@ -939,16 +847,16 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                                     });
                                   }}
                                   className="w-14 tabular-nums text-xs p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-700"
-                                  aria-label={`Hours since last bowel movement for Room ${row.room}`}
+                                  aria-label={l10n("Hours since last bowel movement for Room {{p1}}", { p1: row.room })}
                                   placeholder="0"
                                 />
-                                <span className="text-[11px] text-slate-500 shrink-0">hrs</span>
+                                <span className="text-[11px] text-slate-500 shrink-0">{l10n("hrs")}</span>
                               </div>
                             </div>
 
                             <div className="p-3">
                               <label className="block text-[11px] font-medium text-slate-500 mb-1">
-                                Repositioned
+                                {l10n("Repositioned")}
                               </label>
                               <input
                                 type="text"
@@ -972,9 +880,9 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
 
                           <div className="p-3">
                             <label className="block text-[11px] font-medium text-slate-500 mb-1">
-                              Observations &amp; mood
+                              {l10n("Observations & mood")}
                             </label>
-                            <textarea
+                            <textarea dir="auto"
                               value={row.mltcDetails.qualitativeObservations?.value || ''}
                               disabled={isLocked}
                               onChange={(e) => {
@@ -1015,7 +923,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
           >
             <div className="flex items-center justify-between pb-2 border-b border-slate-200">
               <div className="text-xs font-bold text-slate-900">
-                Source Excerpt · {activeSourcePopover.field} (Room {activeSourcePopover.room})
+                {l10n("Source Excerpt ·") + " "}{activeSourcePopover.field}{" " + l10n("(Room") + " "}{activeSourcePopover.room})
               </div>
               <button
                 type="button"
@@ -1026,7 +934,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
               </button>
             </div>
             <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-800 leading-relaxed font-mono">
-              &ldquo;{activeSourcePopover.quote}&rdquo;
+              {l10n("&ldquo;")}{activeSourcePopover.quote}{l10n("&rdquo;")}
             </div>
             <div className="flex justify-end">
               <button
@@ -1034,7 +942,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                 onClick={() => setActiveSourcePopover(null)}
                 className="px-3 py-1.5 bg-teal-700 text-white rounded-lg text-xs font-semibold cursor-pointer"
               >
-                Close
+                {l10n("Close")}
               </button>
             </div>
           </div>

@@ -129,6 +129,7 @@ export interface EMRRecord {
   anythingElse: string;
   escalations: NurseEscalation[];
   rawTranscript: string;
+  transcriptLanguage?: string;
   translatedTranscript?: string;
   auditTrail: AuditLogEntry[];
   submittedBy: string;

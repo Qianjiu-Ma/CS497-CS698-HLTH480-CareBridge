@@ -33,7 +33,7 @@
   align-items: center;
   gap: 9px;
   font-size: 14px;
-  text-align: left;
+  text-align: start;
 }
 
 .clinical-review-nurse input {
@@ -96,7 +96,7 @@
 
 .clinical-review-count {
   font-size: 13px;
-  margin-left: 6px;
+  margin-inline-start: 6px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -121,7 +121,7 @@
 }
 
 .clinical-review-group h2 .clinical-review-count {
-  margin-left: 0;
+  margin-inline-start: 0;
   color: #586971;
 }
 
@@ -148,7 +148,7 @@
   padding: 20px 22px;
   min-height: 110px;
   width: 100%;
-  text-align: left;
+  text-align: start;
 }
 
 .clinical-review-row + .clinical-review-row {

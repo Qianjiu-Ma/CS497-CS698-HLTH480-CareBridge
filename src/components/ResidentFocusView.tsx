@@ -1,3 +1,6 @@
+import { SelectPopover } from './SelectPopover';
+import { l10n } from '../utils/localization';
+import { ClinicalText } from './ClinicalText';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   HandoffRow,
@@ -9,14 +12,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Check,
-  Loader2,
-  Languages,
   Info,
   Plus,
   Trash2,
   Pencil,
   X,
-  Volume2,
   OctagonAlert,
   AlertTriangle,
   CheckCircle2,
@@ -34,13 +34,7 @@ import {
   StopAndWatchDetailModal,
 } from './StopAndWatchIconBadge';
 import { mergeCareRequirementsIntoRow } from '../utils/geminiParser';
-import { InterfaceLanguage, UI_TRANSLATIONS, UiTranslations } from '../utils/uiTranslations';
-import { useSupportedLanguages } from '../utils/languagesClient';
-import {
-  translateBidirectional,
-  getInstantLtcTranslation,
-  detectLanguage,
-} from '../utils/translator';
+import type { InterfaceLanguage } from '../utils/localization';
 import { getResidentStatus } from '../utils/residentStatus';
 
 interface ResidentFocusViewProps {
@@ -49,7 +43,7 @@ interface ResidentFocusViewProps {
   onUpdateRow: (room: string, updated: Partial<HandoffRow>) => void;
   onSelectResident: (room: string | 'all') => void;
   staffStamp: string;
-  t: UiTranslations;
+
   interfaceLanguage?: InterfaceLanguage;
   customCodeTiers?: Record<string, SeverityTier>;
   thresholds?: AlertThresholds;
@@ -154,15 +148,14 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
   onUpdateRow,
   onSelectResident,
   staffStamp,
-  t,
+
   interfaceLanguage = 'en',
   customCodeTiers,
   thresholds,
   isLocked = false,
 }) => {
-  const { getLanguageByCode } = useSupportedLanguages();
   const fileLanguage = interfaceLanguage;
-  const localT = UI_TRANSLATIONS[fileLanguage] || t;
+
 
   // Local field state (synced immediately to parent)
   const [careCompletedText, setCareCompletedText] = useState(row.done?.value || '');
@@ -189,25 +182,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
   const [isEditingNextSummary, setIsEditingNextSummary] = useState(false);
   const [showAddTask, setShowAddTask] = useState(false);
 
-  // Contextual translation states
-  const [showEnglishMap, setShowEnglishMap] = useState<Record<string, boolean>>({});
-  const [translatedRequirements, setTranslatedRequirements] = useState<Record<string, string>>({});
-  const [translatedFileContent, setTranslatedFileContent] = useState<{
-    done: string;
-    notes: string;
-    notDone: string;
-  }>({
-    done: '',
-    notes: '',
-    notDone: '',
-  });
-  const [isTranslatingFile, setIsTranslatingFile] = useState(false);
-  const [translatingFieldToEn, setTranslatingFieldToEn] = useState<
-    'done' | 'notes' | 'notDone' | null
-  >(null);
-
   const savedTimerRef = useRef<any>(null);
-  const translationCacheRef = useRef<Map<string, string>>(new Map());
   const prevRoomRef = useRef<string>(row.room);
 
   const triggerSavedIndicator = () => {
@@ -229,7 +204,6 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
       setIsEditingNotes(false);
       setIsEditingNextSummary(false);
       setShowAddTask(false);
-      setShowEnglishMap({});
     }
 
     setCareCompletedText(row.done?.value || '');
@@ -248,91 +222,6 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
     };
   }, []);
-
-  // Translate resident fields whenever global Reading Language != 'en'
-  useEffect(() => {
-    if (fileLanguage === 'en') {
-      setTranslatedFileContent({ done: '', notes: '', notDone: '' });
-      setTranslatedRequirements({});
-      setIsTranslatingFile(false);
-      return;
-    }
-
-    let cancelled = false;
-
-    const translateWithCache = async (text: string): Promise<string> => {
-      const trimmed = text.trim();
-      if (!trimmed || trimmed === '—' || trimmed === 'No change') {
-        if (trimmed === 'No change') return getInstantLtcTranslation('No change', fileLanguage, 'en');
-        return trimmed;
-      }
-      const cacheKey = `${fileLanguage}::${trimmed}`;
-      const cached = translationCacheRef.current.get(cacheKey);
-      if (cached) return cached;
-
-      const res = await translateBidirectional(trimmed, 'en', fileLanguage);
-      const out = res?.translatedText?.trim() || getInstantLtcTranslation(trimmed, fileLanguage, 'en');
-      translationCacheRef.current.set(cacheKey, out);
-      return out;
-    };
-
-    setTranslatedFileContent({
-      done: careCompletedText ? getInstantLtcTranslation(careCompletedText, fileLanguage, 'en') : '',
-      notes: additionalNotesText ? getInstantLtcTranslation(additionalNotesText, fileLanguage, 'en') : '',
-      notDone: notDoneText ? getInstantLtcTranslation(notDoneText, fileLanguage, 'en') : '',
-    });
-
-    const timer = setTimeout(async () => {
-      const hasAnyText = Boolean(
-        careCompletedText.trim() ||
-          additionalNotesText.trim() ||
-          notDoneText.trim() ||
-          careRequirements.length > 0
-      );
-      if (!hasAnyText) return;
-
-      setIsTranslatingFile(true);
-      try {
-        const [doneRes, notesRes, notDoneRes, ...reqResList] = await Promise.all([
-          translateWithCache(careCompletedText),
-          translateWithCache(additionalNotesText),
-          translateWithCache(notDoneText),
-          ...careRequirements.map((req) => translateWithCache(req.action_item)),
-        ]);
-
-        if (!cancelled) {
-          setTranslatedFileContent({
-            done: doneRes,
-            notes: notesRes,
-            notDone: notDoneRes,
-          });
-          const reqMap: Record<string, string> = {};
-          careRequirements.forEach((req, idx) => {
-            reqMap[req.id] = reqResList[idx] || req.action_item;
-          });
-          setTranslatedRequirements(reqMap);
-        }
-      } catch (err) {
-        console.warn('Resident translation fallback:', err);
-      } finally {
-        if (!cancelled) setIsTranslatingFile(false);
-      }
-    }, 250);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [fileLanguage, careCompletedText, additionalNotesText, notDoneText, careRequirements]);
-
-  const handleSpeakText = (text: string, langCode: string) => {
-    if (!('speechSynthesis' in window) || !text.trim()) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    const langObj = getLanguageByCode(langCode);
-    utterance.lang = langObj.code === 'auto' ? 'en-CA' : langObj.speechCode;
-    window.speechSynthesis.speak(utterance);
-  };
 
   const currentIndex = allRows.findIndex((r) => r.room === row.room);
   const prevRow = currentIndex > 0 ? allRows[currentIndex - 1] : null;
@@ -371,27 +260,6 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
       });
     }
     triggerSavedIndicator();
-  };
-
-  const handleTranslateFieldToEnglish = async (field: 'done' | 'notes' | 'notDone') => {
-    const raw =
-      field === 'done'
-        ? careCompletedText
-        : field === 'notes'
-        ? additionalNotesText
-        : notDoneText;
-    if (!raw.trim()) return;
-
-    setTranslatingFieldToEn(field);
-    try {
-      const detected = detectLanguage(raw);
-      const res = await translateBidirectional(raw, detected === 'en' ? 'auto' : detected, 'en');
-      if (res?.translatedText) {
-        syncFieldImmediately(field, res.translatedText);
-      }
-    } finally {
-      setTranslatingFieldToEn(null);
-    }
   };
 
   const handleAddCareChip = (text: string) => {
@@ -471,13 +339,6 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
     triggerSavedIndicator();
   };
 
-  const isNonEnglishCareText =
-    careCompletedText.trim().length > 0 && detectLanguage(careCompletedText) !== 'en';
-  const isNonEnglishNotesText =
-    additionalNotesText.trim().length > 0 && detectLanguage(additionalNotesText) !== 'en';
-  const isNonEnglishNotDoneText =
-    notDoneText.trim().length > 0 && detectLanguage(notDoneText) !== 'en';
-
   const fluidMin = thresholds?.fluidIntakeMinMl ?? 1000;
   const bmHoursMax = thresholds?.bowelMovementHoursThreshold ?? 48;
   const fluidValue = row.mltcDetails?.fluidIntakeMl?.value;
@@ -517,21 +378,6 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
     triggerSavedIndicator();
   };
 
-  const displayCare =
-    fileLanguage !== 'en' && !showEnglishMap.done && translatedFileContent.done
-      ? translatedFileContent.done
-      : careCompletedText;
-
-  const displayNotes =
-    fileLanguage !== 'en' && !showEnglishMap.notes && translatedFileContent.notes
-      ? translatedFileContent.notes
-      : additionalNotesText;
-
-  const displayNotDone =
-    fileLanguage !== 'en' && !showEnglishMap.notDone && translatedFileContent.notDone
-      ? translatedFileContent.notDone
-      : notDoneText;
-
   return (
     <div
       key={row.room}
@@ -542,16 +388,11 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
             <h2 className="cb-resident-title">
-              {row.residentName} <span>· Room {row.room}</span>
+              {row.residentName} <span>{l10n("· Room") + " "}{row.room}</span>
             </h2>
 
-            {isTranslatingFile ? (
-              <span className="inline-flex items-center gap-1 text-xs text-teal-700">
-                <Loader2 className="w-3 h-3 cb-pending" />
-                <span>Translating</span>
-              </span>
-            ) : savedNotice ? (
-              <span className="text-xs font-medium text-emerald-700">· Saved</span>
+            {savedNotice ? (
+              <span className="text-xs font-medium text-emerald-700">{l10n("· Saved")}</span>
             ) : null}
           </div>
 
@@ -577,8 +418,8 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
               ) : (
                 <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
               )}
-              <span>{status.isUrgent ? 'Priority attention' : status.clinicalLevel === 'elevated' ? 'This shift' :
-                status.clinicalLevel === 'routine' ? 'No change recorded' : status.clinicalSummary}</span>
+              <span>{status.isUrgent ? l10n("Priority attention") : status.clinicalLevel === 'elevated' ? l10n("This shift") :
+                status.clinicalLevel === 'routine' ? l10n("No change recorded") : status.clinicalSummary}</span>
             </span>
 
             {/* Orthogonal Nurse Notification Status */}
@@ -614,7 +455,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap"
             >
               <Check className="w-3.5 h-3.5" />
-              <span>Confirm pending</span>
+              <span>{l10n("Confirm pending")}</span>
             </button>
           )}
 
@@ -623,7 +464,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
               type="button"
               onClick={() => onSelectResident(prevRow.room)}
               className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-              title={`Previous: Room ${prevRow.room} (${prevRow.residentName})`}
+              title={l10n("Previous: Room {{p1}} ({{p2}})", { p1: prevRow.room, p2: prevRow.residentName })}
             >
               <ChevronLeft className="w-4 h-4" />
               <span className="font-mono tabular-nums">{prevRow.room}</span>
@@ -635,7 +476,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
               type="button"
               onClick={() => onSelectResident(nextRow.room)}
               className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-              title={`Next: Room ${nextRow.room} (${nextRow.residentName})`}
+              title={l10n("Next: Room {{p1}} ({{p2}})", { p1: nextRow.room, p2: nextRow.residentName })}
             >
               <span className="font-mono tabular-nums">{nextRow.room}</span>
               <ChevronRight className="w-4 h-4" />
@@ -654,18 +495,18 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                 type="button"
                 disabled={isLocked}
                 onClick={() => !isLocked && setIsEditingVitals(true)}
-                className="text-left group cursor-pointer disabled:cursor-default"
+                className="text-start group cursor-pointer disabled:cursor-default"
               >
-                <div className="text-[11px] font-medium text-slate-500">Fluids</div>
+                <div className="text-[11px] font-medium text-slate-500">{l10n("Fluids")}</div>
                 <div
                   className={`text-sm font-semibold tabular-nums mt-0.5 leading-snug ${
                     isLowFluid ? 'text-amber-800' : 'text-slate-900 group-hover:text-teal-800'
                   }`}
                 >
-                  {fluidValue !== null && fluidValue !== undefined ? `${fluidValue} mL` : '—'}
+                  {fluidValue !== null && fluidValue !== undefined ? l10n("{{p1}} mL", { p1: fluidValue }) : '—'}
                   {isLowFluid && (
-                    <span className="text-[11px] font-medium text-amber-700 ml-1">
-                      (&lt;{fluidMin})
+                    <span className="text-[11px] font-medium text-amber-700 ms-1">
+                      {l10n("(<")}{fluidMin})
                     </span>
                   )}
                 </div>
@@ -675,13 +516,13 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                 type="button"
                 disabled={isLocked}
                 onClick={() => !isLocked && setIsEditingVitals(true)}
-                className="text-left group cursor-pointer disabled:cursor-default"
+                className="text-start group cursor-pointer disabled:cursor-default"
               >
-                <div className="text-[11px] font-medium text-slate-500">Weight</div>
+                <div className="text-[11px] font-medium text-slate-500">{l10n("Weight")}</div>
                 <div className="text-sm font-semibold tabular-nums text-slate-900 group-hover:text-teal-800 mt-0.5 leading-snug">
                   {row.mltcDetails?.weightKg?.value !== null &&
                   row.mltcDetails?.weightKg?.value !== undefined
-                    ? `${row.mltcDetails.weightKg.value} kg`
+                    ? l10n("{{p1}} kg", { p1: row.mltcDetails.weightKg.value })
                     : '—'}
                 </div>
               </button>
@@ -690,9 +531,9 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                 type="button"
                 disabled={isLocked}
                 onClick={() => !isLocked && setIsEditingVitals(true)}
-                className="text-left group cursor-pointer disabled:cursor-default"
+                className="text-start group cursor-pointer disabled:cursor-default"
               >
-                <div className="text-[11px] font-medium text-slate-500">Last bowel movement</div>
+                <div className="text-[11px] font-medium text-slate-500">{l10n("Last bowel movement")}</div>
                 <div
                   className={`text-sm font-semibold mt-0.5 leading-snug ${
                     isBmOverdue ? 'text-rose-800' : 'text-slate-900 group-hover:text-teal-800'
@@ -708,8 +549,8 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                       <>
                         {bmVal || '—'}
                         {hoursSinceBM !== null && hoursSinceBM !== undefined && !alreadyHasHours && (
-                          <span className="text-xs font-mono tabular-nums font-normal text-slate-500 ml-1.5">
-                            · {hoursSinceBM}h ago
+                          <span className="text-xs font-mono tabular-nums font-normal text-slate-500 ms-1.5">
+                            · {hoursSinceBM}{l10n("h ago")}
                           </span>
                         )}
                       </>
@@ -722,9 +563,9 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                 type="button"
                 disabled={isLocked}
                 onClick={() => !isLocked && setIsEditingVitals(true)}
-                className="text-left group cursor-pointer disabled:cursor-default"
+                className="text-start group cursor-pointer disabled:cursor-default"
               >
-                <div className="text-[11px] font-medium text-slate-500">Repositioned</div>
+                <div className="text-[11px] font-medium text-slate-500">{l10n("Repositioned")}</div>
                 <div className="text-sm font-semibold tabular-nums text-slate-900 group-hover:text-teal-800 mt-0.5 leading-snug">
                   {row.mltcDetails?.lastRepositionTime?.value || '—'}
                 </div>
@@ -738,13 +579,13 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                 className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-900 px-2 py-1 rounded-md hover:bg-slate-200/60 transition-colors cursor-pointer shrink-0"
               >
                 <Pencil className="w-3 h-3" />
-                <span>Edit</span>
+                <span>{l10n("Edit")}</span>
               </button>
             )}
           </div>
           {hasMeasurementsPending && (
             <div className="mt-2.5 flex items-center justify-between gap-2 px-3 py-1.5 bg-amber-50/80 border border-amber-200 rounded-xl text-xs text-amber-950">
-              <span className="font-medium">AI-updated shift measurements awaiting confirmation</span>
+              <span className="font-medium">{l10n("AI-updated shift measurements awaiting confirmation")}</span>
               {!isLocked && (
                 <button
                   type="button"
@@ -775,7 +616,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                   className="inline-flex items-center gap-1 px-2 py-0.5 bg-white hover:bg-emerald-50 text-emerald-800 border border-amber-300 rounded-md text-[11px] font-semibold cursor-pointer shrink-0"
                 >
                   <Check className="w-3 h-3" />
-                  <span>Confirm</span>
+                  <span>{l10n("Confirm")}</span>
                 </button>
               )}
             </div>
@@ -784,21 +625,21 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
         ) : (
           <div className="space-y-2.5">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-slate-700">Edit measurements</span>
+              <span className="font-semibold text-slate-700">{l10n("Edit measurements")}</span>
               <button
                 type="button"
                 onClick={() => setIsEditingVitals(false)}
                 className="text-xs font-semibold text-teal-800 hover:text-teal-950 px-2 py-0.5 rounded hover:bg-teal-50 cursor-pointer"
               >
-                Done
+                {l10n("Done")}
               </button>
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <div>
                 <label className="flex items-center justify-between text-xs font-medium text-slate-600 mb-1">
-                  <span>Fluids (mL)</span>
+                  <span>{l10n("Fluids (mL)")}</span>
                   <span className="text-[11px] text-slate-400 font-mono tabular-nums">
-                    &ge;{fluidMin}
+                    {l10n("&ge;")}{fluidMin}
                   </span>
                 </label>
                 <input
@@ -826,7 +667,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
 
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">
-                  Weight (kg)
+                  {l10n("Weight (kg)")}
                 </label>
                 <input
                   type="number"
@@ -850,9 +691,9 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
 
               <div>
                 <label className="flex items-center justify-between text-xs font-medium text-slate-600 mb-1">
-                  <span>Bowel movement</span>
+                  <span>{l10n("Bowel movement")}</span>
                   <span className="text-[11px] text-slate-400 font-mono tabular-nums">
-                    &lt;{bmHoursMax}h
+                    {l10n("<")}{bmHoursMax}{l10n("h")}
                   </span>
                 </label>
                 <div className="flex items-center gap-1.5">
@@ -897,18 +738,18 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                           ? 'bg-rose-50 border-rose-300 text-rose-950'
                           : 'bg-white border-slate-200 text-slate-900'
                       }`}
-                      title="Hours since last bowel movement"
-                      aria-label="Hours since last bowel movement"
+                      title={l10n("Hours since last bowel movement")}
+                      aria-label={l10n("Hours since last bowel movement")}
                       placeholder="0"
                     />
-                    <span className="text-xs font-medium text-slate-500 shrink-0">hrs</span>
+                    <span className="text-xs font-medium text-slate-500 shrink-0">{l10n("hrs")}</span>
                   </div>
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">
-                  Repositioned
+                  {l10n("Repositioned")}
                 </label>
                 <input
                   type="text"
@@ -939,30 +780,10 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
           {/* GROUP 1: Completed Care (Read-first, Edit-on-demand) */}
           <section className="cb-resident-section space-y-2.5">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-slate-900">Completed care</h3>
+              <h3 className="text-sm font-semibold text-slate-900">{l10n("Completed care")}</h3>
 
               <div className="flex items-center gap-2 shrink-0">
-                {fileLanguage !== 'en' && careCompletedText.trim() && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => handleSpeakText(displayCare, fileLanguage)}
-                      className="text-xs text-teal-800 hover:underline inline-flex items-center gap-1 cursor-pointer"
-                      title={localT.listen}
-                    >
-                      <Volume2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setShowEnglishMap((prev) => ({ ...prev, done: !prev.done }))
-                      }
-                      className="text-xs font-medium text-slate-500 hover:text-slate-900 cursor-pointer"
-                    >
-                      {showEnglishMap.done ? 'Translated' : 'EN'}
-                    </button>
-                  </>
-                )}
+
 
                 {!isLocked && (
                   <button
@@ -971,11 +792,11 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                     className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-900 px-2 py-0.5 rounded-md hover:bg-slate-100 transition-colors cursor-pointer"
                   >
                     {isEditingCare ? (
-                      <span className="text-teal-800 font-semibold">Done</span>
+                      <span className="text-teal-800 font-semibold">{l10n("Done")}</span>
                     ) : (
                       <>
                         <Pencil className="w-3 h-3" />
-                        <span>Edit</span>
+                        <span>{l10n("Edit")}</span>
                       </>
                     )}
                   </button>
@@ -986,7 +807,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
             {row.done?.isPendingConfirmation && (
               <div className="flex items-start justify-between gap-2 px-3 py-2 bg-amber-50/80 border border-amber-200 rounded-xl text-xs text-amber-950">
                 <div className="leading-snug min-w-0 flex-1">
-                  <span className="font-semibold">Pending review</span>
+                  <span className="font-semibold">{l10n("Pending review")}</span>
                   {row.done.sourceQuote && (
                     <span className="text-amber-900"> — “{row.done.sourceQuote}”</span>
                   )}
@@ -1003,51 +824,35 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                     className="inline-flex items-center gap-1 px-2 py-0.5 bg-white hover:bg-emerald-50 text-emerald-800 border border-amber-300 rounded-md text-[11px] font-semibold cursor-pointer shrink-0"
                   >
                     <Check className="w-3 h-3" />
-                    <span>Confirm</span>
+                    <span>{l10n("Confirm")}</span>
                   </button>
                 )}
               </div>
             )}
 
             {!isEditingCare ? (
-              <button
+              <><button
                 type="button"
                 disabled={isLocked}
                 onClick={() => !isLocked && setIsEditingCare(true)}
-                className={`w-full text-left text-sm leading-relaxed rounded-lg transition-colors ${
+                className={`w-full text-start text-sm leading-relaxed rounded-lg transition-colors ${
                   !isLocked ? 'cursor-pointer hover:bg-slate-50/80 -mx-2 px-2 py-1' : 'cursor-default'
                 } ${careCompletedText.trim() ? 'text-slate-800' : 'text-slate-400 italic'}`}
               >
-                {displayCare.trim() || 'Add completed care...'}
-              </button>
+                {careCompletedText.trim() || l10n("Add completed care...")}
+              </button><ClinicalText text={careCompletedText} previewOnly /></>
             ) : (
               <div className="space-y-2.5">
-                {isNonEnglishCareText && (
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => handleTranslateFieldToEnglish('done')}
-                      disabled={translatingFieldToEn === 'done'}
-                      className="inline-flex items-center gap-1 text-xs font-medium text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-2.5 py-1 rounded-lg cursor-pointer"
-                    >
-                      {translatingFieldToEn === 'done' ? (
-                        <Loader2 className="w-3 h-3 cb-pending" />
-                      ) : (
-                        <Languages className="w-3 h-3" />
-                      )}
-                      <span>Translate to EN</span>
-                    </button>
-                  </div>
-                )}
 
-                <textarea
+
+                <textarea dir="auto"
                   value={careCompletedText}
                   disabled={isLocked}
                   autoFocus
                   onChange={(e) => syncFieldImmediately('done', e.target.value)}
                   rows={2}
                   className="w-full text-sm p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-700 leading-relaxed"
-                  placeholder="Baths, meals, hygiene, assistance, and mobility completed..."
+                  placeholder={l10n("Baths, meals, hygiene, assistance, and mobility completed...")}
                 />
 
                 <div className="flex flex-wrap gap-1.5">
@@ -1076,7 +881,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
           <section className="cb-resident-section space-y-3.5">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-slate-900">
-                Health changes
+                {l10n("Health changes")}
               </h3>
 
               {!isLocked && (
@@ -1086,11 +891,11 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                   className="inline-flex items-center gap-1 text-xs font-medium text-teal-800 hover:text-teal-950 px-2 py-0.5 rounded-md hover:bg-teal-50 transition-colors cursor-pointer shrink-0"
                 >
                   {isEditingFlags ? (
-                    <span className="font-semibold">Done</span>
+                    <span className="font-semibold">{l10n("Done")}</span>
                   ) : (
                     <>
                       <Plus className="w-3.5 h-3.5" />
-                      <span>{activeCodes.length > 0 ? 'Edit flags' : 'Flag change'}</span>
+                      <span>{activeCodes.length > 0 ? l10n("Edit flags") : l10n("Flag change")}</span>
                     </>
                   )}
                 </button>
@@ -1103,7 +908,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
               row.mltcDetails?.qualitativeObservations?.isPendingConfirmation) && (
               <div className="flex items-start justify-between gap-2 px-3 py-2 bg-amber-50/80 border border-amber-200 rounded-xl text-xs text-amber-950">
                 <div className="leading-snug min-w-0 flex-1">
-                  <span className="font-semibold">Pending review</span>
+                  <span className="font-semibold">{l10n("Pending review")}</span>
                   {(row.changeNote?.sourceQuote ||
                     row.changeCodes?.sourceQuote ||
                     row.mltcDetails?.qualitativeObservations?.sourceQuote) && (
@@ -1137,7 +942,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                     className="inline-flex items-center gap-1 px-2 py-0.5 bg-white hover:bg-emerald-50 text-emerald-800 border border-amber-300 rounded-md text-[11px] font-semibold cursor-pointer shrink-0"
                   >
                     <Check className="w-3 h-3" />
-                    <span>Confirm</span>
+                    <span>{l10n("Confirm")}</span>
                   </button>
                 )}
               </div>
@@ -1168,7 +973,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                           type="button"
                           onClick={() => setSelectedExplainingCode(codeId)}
                           className="inline-flex items-center gap-1.5 cursor-pointer hover:underline"
-                          title="View clinical details"
+                          title={l10n("View clinical details")}
                         >
                           <IconComp className="w-3.5 h-3.5 shrink-0" />
                           <span>{translatedPrimary}</span>
@@ -1178,8 +983,8 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                             type="button"
                             onClick={() => toggleCode(codeId)}
                             className="opacity-60 hover:opacity-100 p-0.5 cursor-pointer"
-                            title="Remove flag"
-                            aria-label={`Remove ${translatedPrimary}`}
+                            title={l10n("Remove flag")}
+                            aria-label={l10n("Remove {{p1}}", { p1: translatedPrimary })}
                           >
                             <X className="w-3 h-3" />
                           </button>
@@ -1189,7 +994,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                   })}
                 </div>
               ) : (
-                <div className="text-xs text-slate-500">No health changes flagged</div>
+                <div className="text-xs text-slate-500">{l10n("No health changes flagged")}</div>
               )
             ) : (
               <div className="space-y-2">
@@ -1211,7 +1016,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                         type="button"
                         disabled={isLocked}
                         onClick={() => toggleCode(item.id)}
-                        className={`px-2.5 py-1.5 rounded-xl border text-left transition-colors cursor-pointer flex items-center gap-2 group ${
+                        className={`px-2.5 py-1.5 rounded-xl border text-start transition-colors cursor-pointer flex items-center gap-2 group ${
                           isSelected
                             ? `${tierBadge.badgeBg} ${tierBadge.badgeBorder} ${tierBadge.badgeColor} font-semibold`
                             : 'bg-slate-50/70 hover:bg-slate-100 border-slate-200/80 text-slate-700'
@@ -1238,7 +1043,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                             }
                           }}
                           className="text-slate-400 hover:text-teal-700 p-0.5 rounded shrink-0 opacity-70 group-hover:opacity-100"
-                          title="Details"
+                          title={l10n("Details")}
                         >
                           <Info className="w-3.5 h-3.5" />
                         </span>
@@ -1259,7 +1064,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                       }}
                       className="text-xs text-slate-500 hover:text-slate-900 cursor-pointer"
                     >
-                      Clear all flags
+                      {l10n("Clear all flags")}
                     </button>
                   </div>
                 )}
@@ -1269,29 +1074,9 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
             {/* Observations & Mood (Read-first, Edit-on-demand) */}
             <div className="space-y-1.5 pt-1">
               <div className="flex items-center justify-between gap-2">
-                <h3 className="cb-observation-heading">Observations</h3>
+                <h3 className="cb-observation-heading">{l10n("Observations")}</h3>
                 <div className="flex items-center gap-2">
-                  {fileLanguage !== 'en' && additionalNotesText.trim() && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => handleSpeakText(displayNotes, fileLanguage)}
-                        className="text-xs text-teal-800 hover:underline inline-flex items-center gap-1 cursor-pointer"
-                        title={localT.listen}
-                      >
-                        <Volume2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setShowEnglishMap((prev) => ({ ...prev, notes: !prev.notes }))
-                        }
-                        className="text-xs font-medium text-slate-500 hover:text-slate-900 cursor-pointer"
-                      >
-                        {showEnglishMap.notes ? 'Translated' : 'EN'}
-                      </button>
-                    </>
-                  )}
+
                   {!isLocked && (
                     <button
                       type="button"
@@ -1299,11 +1084,11 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                       className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-900 px-2 py-0.5 rounded-md hover:bg-slate-100 transition-colors cursor-pointer"
                     >
                       {isEditingNotes ? (
-                        <span className="text-teal-800 font-semibold">Done</span>
+                        <span className="text-teal-800 font-semibold">{l10n("Done")}</span>
                       ) : (
                         <>
                           <Pencil className="w-3 h-3" />
-                          <span>Edit</span>
+                          <span>{l10n("Edit")}</span>
                         </>
                       )}
                     </button>
@@ -1312,43 +1097,27 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
               </div>
 
               {!isEditingNotes ? (
-                <button
+                <><button
                   type="button"
                   disabled={isLocked}
                   onClick={() => !isLocked && setIsEditingNotes(true)}
-                  className={`w-full text-left text-sm leading-relaxed rounded-lg transition-colors ${
+                  className={`w-full text-start text-sm leading-relaxed rounded-lg transition-colors ${
                     !isLocked ? 'cursor-pointer hover:bg-slate-50/80 -mx-2 px-2 py-1' : 'cursor-default'
                   } ${additionalNotesText.trim() ? 'text-slate-800' : 'text-slate-400 italic'}`}
                 >
-                  {displayNotes.trim() || 'Add mood, energy, or skin observations...'}
-                </button>
+                  {additionalNotesText.trim() || l10n("Add mood, energy, or skin observations...")}
+                </button><ClinicalText text={additionalNotesText} previewOnly /></>
               ) : (
                 <div className="space-y-1.5">
-                  {isNonEnglishNotesText && (
-                    <div className="flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => handleTranslateFieldToEnglish('notes')}
-                        disabled={translatingFieldToEn === 'notes'}
-                        className="inline-flex items-center gap-1 text-xs font-medium text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-2.5 py-1 rounded-lg cursor-pointer"
-                      >
-                        {translatingFieldToEn === 'notes' ? (
-                          <Loader2 className="w-3 h-3 cb-pending" />
-                        ) : (
-                          <Languages className="w-3 h-3" />
-                        )}
-                        <span>Translate to EN</span>
-                      </button>
-                    </div>
-                  )}
-                  <textarea
+
+                  <textarea dir="auto"
                     value={additionalNotesText}
                     disabled={isLocked}
                     autoFocus
                     onChange={(e) => syncFieldImmediately('notes', e.target.value)}
                     rows={2}
                     className="w-full text-sm p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-700 leading-relaxed"
-                    placeholder="Energy, mood, appetite, skin checks, or family updates..."
+                    placeholder={l10n("Energy, mood, appetite, skin checks, or family updates...")}
                   />
                 </div>
               )}
@@ -1383,21 +1152,21 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                   }}
                   className="w-4 h-4 text-teal-700 rounded border-slate-300 focus:ring-teal-700"
                 />
-                <span className="font-semibold text-slate-900">Told Charge Nurse</span>
+                <span className="font-semibold text-slate-900">{l10n("Told Charge Nurse")}</span>
                 {status.needsNurseAction && !toldNurse && (
                   <span
                     className={`font-medium ${
                       status.isUrgent ? 'text-rose-800' : 'text-amber-800'
                     }`}
                   >
-                    · {status.isUrgent ? 'Required now' : 'Required this shift'}
+                    · {status.isUrgent ? l10n("Required now") : l10n("Required this shift")}
                   </span>
                 )}
               </label>
 
               {toldNurse && (
                 <div className="flex items-center gap-1.5">
-                  <span className="text-slate-500">Nurse</span>
+                  <span className="text-slate-500">{l10n("Nurse")}</span>
                   <input
                     type="text"
                     value={nurseInitials}
@@ -1410,8 +1179,8 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                       triggerSavedIndicator();
                     }}
                     className="w-24 px-2 py-0.5 bg-white border border-slate-200 rounded-md font-mono font-semibold text-slate-900 text-xs focus:outline-none focus:ring-1 focus:ring-teal-700"
-                    placeholder="RN (KL)"
-                    aria-label="Charge nurse initials"
+                    placeholder={l10n("RN (KL)")}
+                    aria-label={l10n("Charge nurse initials")}
                   />
                 </div>
               )}
@@ -1429,7 +1198,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
               <>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="text-sm font-semibold text-slate-900 shrink-0">Next shift</h3>
+                    <h3 className="text-sm font-semibold text-slate-900 shrink-0">{l10n("Next shift")}</h3>
                     {careRequirements.length > 0 && (
                       <span className="text-xs font-mono tabular-nums text-slate-400 shrink-0">
                         {completedTasksCount}/{careRequirements.length}
@@ -1438,27 +1207,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
-                    {fileLanguage !== 'en' && hasNextNote && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => handleSpeakText(displayNotDone, fileLanguage)}
-                          className="text-xs text-teal-800 hover:underline inline-flex items-center gap-1 cursor-pointer"
-                          title={localT.listen}
-                        >
-                          <Volume2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setShowEnglishMap((prev) => ({ ...prev, notDone: !prev.notDone }))
-                          }
-                          className="text-xs font-medium text-slate-500 hover:text-slate-900 cursor-pointer px-1"
-                        >
-                          {showEnglishMap.notDone ? 'Translated' : 'EN'}
-                        </button>
-                      </>
-                    )}
+
 
                     {!isLocked && (
                       <>
@@ -1468,11 +1217,11 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                           className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-900 px-2 py-0.5 rounded-md hover:bg-slate-100 transition-colors cursor-pointer"
                         >
                           {isEditingNextSummary ? (
-                            <span className="text-teal-800 font-semibold">Done</span>
+                            <span className="text-teal-800 font-semibold">{l10n("Done")}</span>
                           ) : (
                             <>
                               <Pencil className="w-3 h-3" />
-                              <span>{hasNextNote ? 'Edit note' : 'Add note'}</span>
+                              <span>{hasNextNote ? l10n("Edit note") : l10n("Add note")}</span>
                             </>
                           )}
                         </button>
@@ -1483,11 +1232,11 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                           className="inline-flex items-center gap-1 text-xs font-medium text-teal-800 hover:text-teal-950 px-2 py-0.5 rounded-md hover:bg-teal-50 transition-colors cursor-pointer"
                         >
                           {showAddTask ? (
-                            <span className="font-semibold">Done</span>
+                            <span className="font-semibold">{l10n("Done")}</span>
                           ) : (
                             <>
                               <Plus className="w-3.5 h-3.5" />
-                              <span>Add task</span>
+                              <span>{l10n("Add task")}</span>
                             </>
                           )}
                         </button>
@@ -1499,7 +1248,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                 {row.notDoneNextShift?.isPendingConfirmation && (
                   <div className="flex items-start justify-between gap-2 px-3 py-2 bg-amber-50/80 border border-amber-200 rounded-xl text-xs text-amber-950">
                     <div className="leading-snug min-w-0 flex-1">
-                      <span className="font-semibold">Pending review</span>
+                      <span className="font-semibold">{l10n("Pending review")}</span>
                       {row.notDoneNextShift.sourceQuote && (
                         <span className="text-amber-900">
                           {' '}
@@ -1522,7 +1271,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                         className="inline-flex items-center gap-1 px-2 py-0.5 bg-white hover:bg-emerald-50 text-emerald-800 border border-amber-300 rounded-md text-[11px] font-semibold cursor-pointer shrink-0"
                       >
                         <Check className="w-3 h-3" />
-                        <span>Confirm</span>
+                        <span>{l10n("Confirm")}</span>
                       </button>
                     )}
                   </div>
@@ -1531,30 +1280,14 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                 {/* Unified Handover Note + Actionable Tasks */}
                 {isEditingNextSummary ? (
                   <div className="space-y-1.5">
-                    {isNonEnglishNotDoneText && (
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => handleTranslateFieldToEnglish('notDone')}
-                          disabled={translatingFieldToEn === 'notDone'}
-                          className="inline-flex items-center gap-1 text-xs font-medium text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-2.5 py-1 rounded-lg cursor-pointer"
-                        >
-                          {translatingFieldToEn === 'notDone' ? (
-                            <Loader2 className="w-3 h-3 cb-pending" />
-                          ) : (
-                            <Languages className="w-3 h-3" />
-                          )}
-                          <span>Translate to EN</span>
-                        </button>
-                      </div>
-                    )}
+
                     <input
                       type="text"
                       value={notDoneText === '—' ? '' : notDoneText}
                       disabled={isLocked}
                       autoFocus
                       onChange={(e) => syncFieldImmediately('notDone', e.target.value)}
-                      placeholder="Carry-over note for incoming shift (e.g. Offer snack at 15:30)..."
+                      placeholder={l10n("Carry-over note for incoming shift (e.g. Offer snack at 15:30)...")}
                       className="w-full text-sm px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-700"
                     />
                   </div>
@@ -1564,12 +1297,13 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                       type="button"
                       disabled={isLocked}
                       onClick={() => !isLocked && setIsEditingNextSummary(true)}
-                      className={`w-full text-left text-sm leading-relaxed text-slate-800 rounded-lg transition-colors ${
+                      className={`w-full text-start text-sm leading-relaxed text-slate-800 rounded-lg transition-colors ${
                         !isLocked ? 'cursor-pointer hover:bg-slate-50/80 -mx-2 px-2 py-1' : 'cursor-default'
                       }`}
                     >
-                      {displayNotDone}
+                      {notDoneText}
                     </button>
+                    <ClinicalText text={notDoneText} previewOnly />
                     {!isLocked &&
                       !careRequirements.some(
                         (req) =>
@@ -1608,7 +1342,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                             className="inline-flex items-center gap-1 text-xs font-medium text-teal-800 hover:text-teal-950 hover:bg-teal-50 px-2 py-1 rounded-md transition-colors cursor-pointer"
                           >
                             <Plus className="w-3.5 h-3.5" />
-                            <span>Track as task</span>
+                            <span>{l10n("Track as task")}</span>
                           </button>
                         </div>
                       )}
@@ -1619,11 +1353,6 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                 {careRequirements.length > 0 && (
                   <div className="divide-y divide-slate-100 border border-slate-200/80 rounded-xl overflow-hidden">
                     {careRequirements.map((req) => {
-                      const translatedReq =
-                        fileLanguage !== 'en' && translatedRequirements[req.id]
-                          ? translatedRequirements[req.id]
-                          : '';
-
                       return (
                         <div
                           key={req.id}
@@ -1644,15 +1373,15 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                               className="w-4 h-4 mt-0.5 text-teal-700 rounded border-slate-300 cursor-pointer shrink-0"
                             />
                             <div className="min-w-0 flex-1 leading-snug">
-                              <span className="font-semibold text-slate-500 mr-1.5">
-                                {req.category} ·
+                              <span className="font-semibold text-slate-500 me-1.5">
+                                {l10n(req.category)} ·
                               </span>
                               <span
                                 className={`font-medium ${
                                   req.completed ? 'line-through text-slate-400' : 'text-slate-900'
                                 }`}
                               >
-                                {translatedReq || req.action_item}
+                                <ClinicalText text={req.action_item} />
                               </span>
                             </div>
                           </label>
@@ -1663,7 +1392,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                                 type="button"
                                 onClick={() => handleAcceptRequirement(req.id)}
                                 className="p-1 text-emerald-700 hover:bg-emerald-100 rounded-md cursor-pointer"
-                                title="Confirm task"
+                                title={l10n("Confirm task")}
                               >
                                 <Check className="w-3.5 h-3.5" />
                               </button>
@@ -1673,7 +1402,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                                 type="button"
                                 onClick={() => handleRemoveRequirement(req.id)}
                                 className="p-1 text-slate-400 hover:text-rose-700 hover:bg-rose-50 rounded-md cursor-pointer opacity-70 group-hover:opacity-100"
-                                title="Remove task"
+                                title={l10n("Remove task")}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -1688,17 +1417,9 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                 {/* Progressive Inline Task Composer */}
                 {showAddTask && !isLocked && (
                   <div className="flex flex-wrap items-center gap-2 pt-1">
-                    <select
-                      value={newReqCategory}
-                      onChange={(e) => setNewReqCategory(e.target.value as CareRequirementCategory)}
-                      className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer"
-                    >
-                      <option value="Mobility">Mobility</option>
-                      <option value="Dietary">Dietary</option>
-                      <option value="Medication">Medication</option>
-                      <option value="Hygiene">Hygiene</option>
-                      <option value="Other">Other</option>
-                    </select>
+                    <SelectPopover label={l10n('Task category')} value={newReqCategory} onChange={setNewReqCategory}
+                      options={(['Mobility', 'Dietary', 'Medication', 'Hygiene', 'Other'] as const)
+                        .map((value) => ({ value, label: l10n(value) }))} />
                     <input
                       type="text"
                       value={newReqText}
@@ -1710,7 +1431,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                         }
                       }}
                       autoFocus
-                      placeholder="Add follow-up task..."
+                      placeholder={l10n("Add follow-up task...")}
                       className="flex-1 min-w-[140px] text-xs px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-700"
                     />
                     <button
@@ -1720,7 +1441,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                       className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-teal-700 hover:bg-teal-800 disabled:opacity-50 text-white rounded-lg text-xs font-semibold cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      <span>Add</span>
+                      <span>{l10n("Add")}</span>
                     </button>
                   </div>
                 )}
@@ -1734,11 +1455,11 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                       type="button"
                       disabled={isLocked}
                       onClick={() => !isLocked && setIsEditingNextSummary(true)}
-                      className={`w-full text-left text-sm italic text-slate-400 rounded-lg transition-colors ${
+                      className={`w-full text-start text-sm italic text-slate-400 rounded-lg transition-colors ${
                         !isLocked ? 'cursor-pointer hover:bg-slate-50/80 -mx-2 px-2 py-1' : 'cursor-default'
                       }`}
                     >
-                      Nothing pending for next shift
+                      {l10n("Nothing pending for next shift")}
                     </button>
                   )}
               </>

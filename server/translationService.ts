@@ -60,6 +60,7 @@ const translationCache = new Map<
 >();
 const TRANSLATION_CACHE_MAX = 500;
 const TRANSLATION_CACHE_TTL_MS = 30 * 60 * 1000;
+const inFlightTranslations = new Map<string, Promise<TranslationV3Response>>();
 
 // Lazily initialized Cloud Translation v3 client & circuit-breakers for unconfigured/unauthorized tiers
 let v3Client: InstanceType<typeof TranslationServiceClient> | null = null;
@@ -355,7 +356,24 @@ export async function getSupportedLanguagesV3(
  * Translate text using Google Cloud Translation API (Advanced / v3) with exact latency
  * tracking (`translation_latency_ms`), timeout/retry handling, and graceful fallbacks.
  */
-export async function translateTextV3(params: {
+export function translateTextV3(params: {
+  text: string;
+  sourceLang?: string;
+  targetLang: string;
+}): Promise<TranslationV3Response> {
+  const key = JSON.stringify([params.sourceLang || 'auto', params.targetLang, params.text]);
+  const pending = inFlightTranslations.get(key);
+  if (pending) return pending;
+  const work = requestTranslationV3(params).finally(() => inFlightTranslations.delete(key));
+  inFlightTranslations.set(key, work);
+  return work;
+}
+
+function usableTranslation(value: string, original: string, detected: string, target: string) {
+  return Boolean(value) && (value !== original || detected.toLowerCase() === target.toLowerCase());
+}
+
+async function requestTranslationV3(params: {
   text: string;
   sourceLang?: string;
   targetLang: string;
@@ -377,7 +395,11 @@ export async function translateTextV3(params: {
   }
 
   // Exact cache lookup (fast path)
-  const cacheKey = `${rawSource}::${targetLang}::${trimmed}`;
+  const glossaryId = process.env.GOOGLE_TRANSLATE_GLOSSARY_ID?.trim();
+  const glossary = glossaryId && /^[\w-]+$/.test(glossaryId) && rawSource !== 'auto'
+    ? `projects/${getProjectId()}/locations/${getLocation()}/glossaries/${glossaryId}`
+    : undefined;
+  const cacheKey = JSON.stringify([rawSource, targetLang, glossary, trimmed]);
   const cachedEntry = translationCache.get(cacheKey);
   if (cachedEntry && Date.now() < cachedEntry.expiresAt) {
     return {
@@ -423,16 +445,17 @@ export async function translateTextV3(params: {
       if (rawSource && rawSource !== 'auto') {
         request.sourceLanguageCode = rawSource;
       }
+      if (glossary) request.glossaryConfig = { glossary };
 
-      const [response] = await withTimeoutAndRetry(() => client.translateText(request));
+      const [response] = await client.translateText(request, { timeout: DEFAULT_TIMEOUT_MS });
       const latencyMs = Math.max(1, Math.round(performance.now() - requestStartPerf));
 
-      const firstTranslation = response.translations?.[0];
+      const firstTranslation = glossary ? response.glossaryTranslations?.[0] : response.translations?.[0];
       const translatedText = (firstTranslation?.translatedText || '').trim();
       const detectedSource =
         firstTranslation?.detectedLanguageCode || (rawSource === 'auto' ? 'und' : rawSource);
 
-      if (translatedText) {
+      if (usableTranslation(translatedText, trimmed, detectedSource, targetLang)) {
         setTranslationCache(cacheKey, {
           translated_text: translatedText,
           detected_source_language: detectedSource,
@@ -489,6 +512,7 @@ export async function translateTextV3(params: {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
+          signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
         });
         if (!resp.ok) {
           if (resp.status === 400 || resp.status === 401 || resp.status === 403) {
@@ -507,7 +531,7 @@ export async function translateTextV3(params: {
       });
 
       const latencyMs = Math.max(1, Math.round(performance.now() - requestStartPerf));
-      if (restResult.translatedText) {
+      if (usableTranslation(restResult.translatedText, trimmed, restResult.detectedSource, targetLang)) {
         setTranslationCache(cacheKey, {
           translated_text: restResult.translatedText,
           detected_source_language: restResult.detectedSource,
@@ -531,14 +555,14 @@ export async function translateTextV3(params: {
     }
   }
 
-  // 3. Tertiary: Official Google Translate GTX endpoint (zero-key resilience)
-  try {
+  // Public Translate endpoint retained for the fictional-data demo.
+  if (process.env.CAREBRIDGE_DISABLE_DEMO_TRANSLATION !== '1') try {
     const gtxResult = await withTimeoutAndRetry(async () => {
       const sl = rawSource === 'auto' ? 'auto' : rawSource;
       const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(
         sl
       )}&tl=${encodeURIComponent(targetLang)}&dt=t&q=${encodeURIComponent(trimmed)}`;
-      const resp = await fetch(url);
+      const resp = await fetch(url, { signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS) });
       if (!resp.ok) {
         throw new Error(`Google Translate service returned HTTP ${resp.status}`);
       }
@@ -548,10 +572,10 @@ export async function translateTextV3(params: {
         : '';
       const detectedSource = data?.[2] || (rawSource === 'auto' ? 'und' : rawSource);
       return { translatedText, detectedSource };
-    });
+    }, { maxRetries: 0 });
 
     const latencyMs = Math.max(1, Math.round(performance.now() - requestStartPerf));
-    if (gtxResult.translatedText) {
+    if (usableTranslation(gtxResult.translatedText, trimmed, gtxResult.detectedSource, targetLang)) {
       setTranslationCache(cacheKey, {
         translated_text: gtxResult.translatedText,
         detected_source_language: gtxResult.detectedSource,
@@ -587,11 +611,18 @@ export async function translateTextV3(params: {
       });
 
       const latencyMs = Math.max(1, Math.round(performance.now() - requestStartPerf));
-      if (geminiOut?.translated_text) {
+      const translatedText = typeof geminiOut?.translated_text === 'string' ? geminiOut.translated_text.trim() : '';
+      const detectedSource = typeof geminiOut?.detected_source_language === 'string'
+        ? geminiOut.detected_source_language : rawSource === 'auto' ? 'und' : rawSource;
+      if (usableTranslation(translatedText, trimmed, detectedSource, targetLang)) {
+        setTranslationCache(cacheKey, {
+          translated_text: translatedText,
+          detected_source_language: detectedSource,
+          provider: 'gemini-fallback',
+        });
         return {
-          translated_text: String(geminiOut.translated_text).trim(),
-          detected_source_language:
-            geminiOut.detected_source_language || (rawSource === 'auto' ? 'und' : rawSource),
+          translated_text: translatedText,
+          detected_source_language: detectedSource,
           translation_latency_ms: latencyMs,
           target_language: targetLang,
           provider: 'gemini-fallback',

@@ -1,3 +1,4 @@
+import { l10n } from './utils/localization';
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { PrototypeBanner } from './components/Banner';
 import { Navigation, ScreenTab } from './components/Navigation';
@@ -16,7 +17,8 @@ import { PrintablePaperSheet } from './components/PrintablePaperSheet';
 import { ResidentRibbon } from './components/ResidentRibbon';
 import { ResidentFocusView } from './components/ResidentFocusView';
 import { Button, WorkspaceFooter } from './components/WorkspaceUi';
-import { InterfaceLanguage, UI_TRANSLATIONS } from './utils/uiTranslations';
+import { interfaceLocale, loadInterfaceLocale, setInterfaceLocale, useInterfaceLanguage } from './utils/localization';
+import type { InterfaceLanguage } from './utils/localization';
 
 import {
   HandoffRow,
@@ -134,6 +136,10 @@ function loadPersistedState(): PersistedHandoffState {
   }
 }
 
+export function readInterfacePreference(): InterfaceLanguage {
+  return interfaceLocale(loadPersistedState().interfaceLanguage);
+}
+
 export default function App() {
   const initialPersisted = useMemo(() => loadPersistedState(), []);
 
@@ -145,10 +151,19 @@ export default function App() {
   const [selectedResidentRoom, setSelectedResidentRoom] = useState<string | 'all'>(
     initialPersisted.selectedResidentRoom || '102'
   );
-  const [interfaceLanguage, setInterfaceLanguage] = useState<InterfaceLanguage>(
-    initialPersisted.interfaceLanguage || 'en'
-  );
-  const t = UI_TRANSLATIONS[interfaceLanguage];
+  const interfaceLanguage = useInterfaceLanguage();
+  const localeRequest = useRef(0);
+  const [localeError, setLocaleError] = useState(false);
+  const changeInterfaceLanguage = async (language: InterfaceLanguage) => {
+    const request = ++localeRequest.current;
+    setLocaleError(false);
+    try {
+      await loadInterfaceLocale(language);
+      if (request === localeRequest.current) setInterfaceLocale(language);
+    } catch {
+      if (request === localeRequest.current) setLocaleError(true);
+    }
+  };
 
   const [header, setHeader] = useState<ShiftHeader>(
     initialPersisted.header && initialPersisted.header.unit ? initialPersisted.header : DEFAULT_HEADER
@@ -183,6 +198,7 @@ export default function App() {
 
   // Live voice & transcript state
   const [liveTranscript, setLiveTranscript] = useState<string>('');
+  const [transcriptLanguage, setTranscriptLanguage] = useState<string>();
   const [translatedTranscript, setTranslatedTranscript] = useState<string>('');
   const [translationConfidence, setTranslationConfidence] = useState<'high' | 'medium' | 'low'>('high');
   const [openQuestions, setOpenQuestions] = useState<string[]>([]);
@@ -243,7 +259,7 @@ export default function App() {
   // Evaluate deterministic alerts
   const alerts = useMemo(() => {
     return evaluateDeterministicAlerts(rows, thresholds);
-  }, [rows, thresholds]);
+  }, [rows, thresholds, interfaceLanguage]);
 
   // Count pending nurse escalations for navigation badge
   const pendingNurseCount = useMemo(() => {
@@ -517,7 +533,8 @@ export default function App() {
         // Keep last 2 utterances for minimal context
         recentUtterancesRef.current = [...recentUtterancesRef.current.slice(-1), transcriptText];
 
-        setTranslatedTranscript(result.translatedTranscript);
+        setTranscriptLanguage(result.detectedSourceLanguage || language);
+        setTranslatedTranscript(result.translatedTranscript !== transcriptText.trim() ? result.translatedTranscript : '');
         setTranslationConfidence(result.translationConfidence);
         setRows(result.updatedRows);
         setUnassignedExtractions(result.unassignedExtractions || []);
@@ -696,6 +713,7 @@ export default function App() {
   // Load a demo scenario
   const handleLoadScenario = (scenario: DemoScenario) => {
     setLiveTranscript(scenario.rawTranscript);
+    setTranscriptLanguage(scenario.language);
     setTranslatedTranscript(scenario.expectedTranslation);
     setTranslationConfidence('high');
     setOpenQuestions([]);
@@ -1066,6 +1084,7 @@ export default function App() {
       anythingElse,
       escalations,
       rawTranscript: liveTranscript,
+      transcriptLanguage,
       translatedTranscript,
       auditTrail,
       submittedBy: header.outgoingPsw,
@@ -1087,7 +1106,7 @@ export default function App() {
   const focusedRow = rows.find((r) => r.room === selectedResidentRoom) || rows[0];
   const unitNotesAction = (
     <Button aria-expanded={showUnitNotes} aria-controls="handoff-unit-notes"
-      onClick={() => setShowUnitNotes(!showUnitNotes)}><FileText /> Unit notes</Button>
+      onClick={() => setShowUnitNotes(!showUnitNotes)}><FileText />{" " + l10n("Unit notes")}</Button>
   );
 
   return (
@@ -1102,9 +1121,11 @@ export default function App() {
         pendingNurseEscalationsCount={pendingNurseCount}
         onPrintPaperFallback={() => handlePrintPaperFallback(true)}
         interfaceLanguage={interfaceLanguage}
-        onLanguageChange={setInterfaceLanguage}
-        t={t}
+        onLanguageChange={changeInterfaceLanguage}
       />
+      {localeError && <p className="cb-wrap cb-page-subtitle" role="status">
+        {l10n('Could not load this language. Try again.')}
+      </p>}
 
       {/* 3. Main Viewport Canvas */}
       <main className="cb-wrap cb-main no-print">
@@ -1125,14 +1146,14 @@ export default function App() {
                   <div className="flex items-center gap-2">
                     <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
                     <div>
-                      <span className="font-bold">Handoff submitted to the simulated archive.</span> Sheet is locked for audit integrity.
+                      <span className="font-bold">{l10n("Handoff submitted to the simulated archive.")}</span>{" " + l10n("Sheet is locked for audit integrity.")}
                     </div>
                   </div>
                   <button
                     onClick={() => setIsLocked(false)}
                     className="px-3 py-1 bg-white border border-emerald-300 text-emerald-800 rounded-lg font-semibold text-xs hover:bg-emerald-50 cursor-pointer transition-colors"
                   >
-                    Unlock for Edits
+                    {l10n("Unlock for Edits")}
                   </button>
                 </div>
               )}
@@ -1193,7 +1214,7 @@ export default function App() {
                     onSelectResident={setSelectedResidentRoom}
                     customCodeTiers={thresholds.customCodeTiers}
                     thresholds={thresholds}
-                    t={t}
+
                   />
                 </div>
 
@@ -1206,7 +1227,7 @@ export default function App() {
                       onUpdateRow={handleUpdateRow}
                       onSelectResident={setSelectedResidentRoom}
                       staffStamp={header.outgoingPsw}
-                      t={t}
+
                       interfaceLanguage={interfaceLanguage}
                       customCodeTiers={thresholds.customCodeTiers}
                       thresholds={thresholds}
@@ -1223,7 +1244,7 @@ export default function App() {
                       customTiers={thresholds.customCodeTiers}
                       thresholds={thresholds}
                       onSelectResident={setSelectedResidentRoom}
-                      t={t}
+
                       interfaceLanguage={interfaceLanguage}
                     />
                   )}
@@ -1235,18 +1256,18 @@ export default function App() {
             <WorkspaceFooter>
               {confirmReset ? (
                 <div className="cb-page-actions">
-                  <span>Reset all entries?</span>
-                  <Button variant="danger" onClick={handleClearSheet}>Confirm Reset</Button>
-                  <Button onClick={() => setConfirmReset(false)}>Cancel</Button>
+                  <span>{l10n("Reset all entries?")}</span>
+                  <Button variant="danger" onClick={handleClearSheet}>{l10n("Confirm Reset")}</Button>
+                  <Button onClick={() => setConfirmReset(false)}>{l10n("Cancel")}</Button>
                 </div>
               ) : (
-                <Button variant="quiet" onClick={() => setConfirmReset(true)}><RotateCcw /> Reset</Button>
+                <Button variant="quiet" onClick={() => setConfirmReset(true)}><RotateCcw />{" " + l10n("Reset")}</Button>
               )}
               {totalPendingCount > 0 && !isLocked && (
-                <Button onClick={handleAcceptAllPending}><CheckCheck /> Accept pending ({totalPendingCount})</Button>
+                <Button onClick={handleAcceptAllPending}><CheckCheck />{" " + l10n("Accept pending (")}{totalPendingCount})</Button>
               )}
               <Button variant="primary" onClick={() => setIsConfirmModalOpen(true)} disabled={isLocked}>
-                <CheckCircle /> Review handoff
+                <CheckCircle />{" " + l10n("Review handoff")}
               </Button>
             </WorkspaceFooter>
           </div>

@@ -1,6 +1,5 @@
 .emr-archive button:focus-visible,
 .emr-archive input:focus-visible,
-.emr-archive select:focus-visible,
 .emr-archive summary:focus-visible {
   outline: 3px solid var(--cb-accent);
   outline-offset: 3px;
@@ -107,18 +106,10 @@
   display: none;
 }
 
-.emr-archive .filterpanel label {
+.emr-archive .filterpanel .filter-field {
   display: grid;
   gap: 4px;
   font-size: 13px;
-}
-
-.emr-archive .filterpanel select {
-  padding: 8px;
-  border: 1px solid #d4dfe0;
-  border-radius: 6px;
-  background: var(--cb-surface);
-  max-width: 100%;
 }
 
 .emr-archive .filterpanel .filter-check {
@@ -218,7 +209,7 @@
   grid-template-columns: 44px minmax(125px,.8fr) minmax(0,2fr) 20px;
   gap: 12px;
   align-items: center;
-  text-align: left;
+  text-align: start;
   min-height: 70px;
   padding: 12px 0;
   border-bottom: 1px solid var(--cb-line);
@@ -292,7 +283,7 @@
 }
 
 .emr-archive .archivefooter .last {
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 
 .emr-archive .empty {
@@ -409,7 +400,7 @@
 .emr-archive .fulltable td {
   border-bottom: 1px solid var(--cb-line);
   padding: 11px;
-  text-align: left;
+  text-align: start;
   vertical-align: top;
   overflow-wrap: anywhere;
 }
@@ -443,7 +434,7 @@
   cursor: pointer;
 }
 
-.emr-archive :where(button, input, select) {
+.emr-archive :where(button, input) {
   font: inherit;
 }
 
@@ -521,7 +512,7 @@
   }
 
   .emr-archive .shiftlinks {
-    padding-left: 56px;
+    padding-inline-start: 56px;
     width: 100%;
   }
 
@@ -560,7 +551,7 @@
   }
 
   .emr-archive .archivefooter .last {
-    margin-left: 0;
+    margin-inline-start: 0;
   }
 
   .emr-archive .action {
