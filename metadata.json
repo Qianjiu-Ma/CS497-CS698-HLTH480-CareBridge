@@ -1,0 +1,10 @@
+{
+  "name": "Remix Remix Voice-to-Checklist Shift Handoff Assistant",
+  "description": "Multilingual voice-to-checklist shift handoff assistant prototype for long-term care homes (Schlegel Villages PoC). Features live speech-to-text, Stop \u0026 Watch clinical change codes, rule-based alerts, pending review confirmation, and simulated EMR integration.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
