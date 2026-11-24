@@ -209,7 +209,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
             · {rows.length}
           </span>
           {isTranslatingSheet && (
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-700" />
+            <Loader2 className="w-3.5 h-3.5 cb-pending text-teal-700" />
           )}
         </div>
 
@@ -222,7 +222,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
               <button
                 type="button"
                 onClick={onAcceptAllPending}
-                className="inline-flex items-center gap-1.5 px-3 py-1 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer active:scale-[0.98]"
+                className="inline-flex items-center gap-1.5 px-3 py-1 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
               >
                 <CheckCheck className="w-3.5 h-3.5" />
                 <span>Accept all</span>
@@ -809,7 +809,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                         <button
                           type="button"
                           onClick={() => onSelectResident(row.room)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-teal-800 hover:bg-teal-50 rounded-lg cursor-pointer transition-colors active:scale-[0.98]"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-teal-800 hover:bg-teal-50 rounded-lg cursor-pointer transition-colors"
                           title="Open resident workspace"
                         >
                           <span>Open</span>

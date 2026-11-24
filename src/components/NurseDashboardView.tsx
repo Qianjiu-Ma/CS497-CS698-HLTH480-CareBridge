@@ -1,27 +1,21 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'motion/react';
+import { AlertThresholds, HandoffRow, NurseEscalation } from '../types/handoff';
 import {
-  AlertThresholds,
-  HandoffRow,
-  NurseEscalation,
-} from '../types/handoff';
-import {
-  AlertTriangle,
   ArrowUpRight,
   Check,
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  ClipboardCheck,
+  ChevronRight,
+  CircleAlert,
   Clock,
-  FileText,
-  Info,
-  OctagonAlert,
-  Pencil,
-  RotateCcw,
+  Droplet,
+  HeartPulse,
+  PersonStanding,
   ShieldAlert,
-  UserCheck,
+  SquareX,
+  UserRound,
+  X,
 } from 'lucide-react';
+import './NurseDashboardView.css';
+import { Button, PageHeader, WorkspaceFooter } from './WorkspaceUi';
 import {
   computeRowSeverity,
   getCodeConfig,
@@ -34,7 +28,7 @@ import {
 } from './StopAndWatchIconBadge';
 import { getResidentStatus } from '../utils/residentStatus';
 
-type TriageFilter = 'all' | 'pending' | 'monitoring' | 'resolved';
+type TriageFilter = 'all' | 'pending' | 'resolved';
 
 interface NurseDashboardViewProps {
   escalations: NurseEscalation[];
@@ -61,6 +55,7 @@ interface NurseDashboardViewProps {
     resolveImmediately?: boolean
   ) => void;
   onOpenResidentInHandoff: (room: string) => void;
+  onResetDemo: () => void;
 }
 
 interface AbnormalMetric {
@@ -100,6 +95,32 @@ interface EnrichedConcern {
   concernHeadline: string;
   qualitativeObservation: string;
   abnormalMetrics: AbnormalMetric[];
+}
+
+
+function concernStatus(item: EnrichedConcern, compact = false): string {
+  if (item.isUnescalatedWatch) return 'Unacknowledged watch';
+  if (item.stage === 'pending') return compact ? 'This shift' : 'Needs review';
+  return item.stage === 'resolved' ? 'Resolved' : 'Monitoring';
+}
+
+function bowelFinding(item: EnrichedConcern): string {
+  return item.hoursSinceBM == null
+    ? 'Bowel movement overdue'
+    : 'No bowel movement for ' + item.hoursSinceBM + ' hours';
+}
+
+function compactFinding(item: EnrichedConcern): string {
+  if (item.isBmOverdue && item.effectiveTier !== 3) return bowelFinding(item);
+  if (item.codes.includes('C') && /red area on left heel$/i.test(item.concernHeadline) &&
+      /\bredness on heel does not blanch\b/i.test(item.qualitativeObservation)) {
+    return 'Non-blanching heel redness';
+  }
+  if (item.codes.includes('H') && /^needed 2 people to transfer at lunch, usually 1$/i.test(item.concernHeadline)) {
+    return 'Transfer now needs two people';
+  }
+  if (item.isUnescalatedWatch && item.isLowFluid) return 'Low fluid intake';
+  return item.concernHeadline;
 }
 
 const UNFILLED_PLACEHOLDER_RE = /\[[^\]\n]+\]|_{3,}/;
@@ -237,28 +258,28 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
   onReopenEscalation,
   onCreateEscalationFromWatch,
   onOpenResidentInHandoff,
+  onResetDemo,
 }) => {
   const [filter, setFilter] = useState<TriageFilter>('all');
-  const [openAssessmentIds, setOpenAssessmentIds] = useState<Record<string, boolean>>({});
-  const [openRecordIds, setOpenRecordIds] = useState<Record<string, boolean>>({});
-  const [showResolvedDrawer, setShowResolvedDrawer] = useState(false);
-
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [detailCodeId, setDetailCodeId] = useState<string | null>(null);
   const [nurseName, setNurseName] = useState('K. Lewis, RN');
   const [isEditingNurseName, setIsEditingNurseName] = useState(false);
-  const [nurseNameDraft, setNurseNameDraft] = useState('K. Lewis, RN');
-
-  // Drafts & validation errors keyed by concern ID
-  const [assessmentDrafts, setAssessmentDrafts] = useState<Record<string, string>>({});
-  const [assessmentErrors, setAssessmentErrors] = useState<Record<string, string>>({});
-  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
-  const [editingNoteDraft, setEditingNoteDraft] = useState('');
-  const [editingNoteError, setEditingNoteError] = useState<string | null>(null);
-  const [resolutionDrafts, setResolutionDrafts] = useState<Record<string, string>>({});
-  const [resolutionErrors, setResolutionErrors] = useState<Record<string, string>>({});
-  const [detailCodeId, setDetailCodeId] = useState<string | null>(null);
-
-  const textareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
-  const resolutionInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [nurseNameDraft, setNurseNameDraft] = useState(nurseName);
+  const [assessmentDraft, setAssessmentDraft] = useState('');
+  const [resolutionDraft, setResolutionDraft] = useState('');
+  const [assessmentError, setAssessmentError] = useState('');
+  const [resolutionError, setResolutionError] = useState('');
+  const [showResolution, setShowResolution] = useState(false);
+  const [checkedResolution, setCheckedResolution] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [announcement, setAnnouncement] = useState('');
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const criteriaRef = useRef<HTMLDialogElement>(null);
+  const noteRef = useRef<HTMLTextAreaElement>(null);
+  const resolutionRef = useRef<HTMLTextAreaElement>(null);
+  const filterRef = useRef<HTMLElement>(null);
+  const rowTriggerRef = useRef<HTMLButtonElement>(null);
 
   const bmThreshold = thresholds.bowelMovementHoursThreshold ?? 48;
   const fluidMin = thresholds.fluidIntakeMinMl ?? 1000;
@@ -526,74 +547,69 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
     [monitoringItemsAll, unescalatedLowFluidWatches]
   );
 
-  const totalActiveCount = pendingItemsAll.length + monitoringItemsAll.length;
+  const totalActiveCount =
+    pendingItemsAll.length + monitoringItemsAll.length + unescalatedLowFluidWatches.length;
+  const selectedConcern = [...enrichedEscalations, ...unescalatedUrgentWatches, ...unescalatedLowFluidWatches]
+    .find((item) => item.id === selectedId);
+  const detailCodeConfig = detailCodeId ? getCodeConfig(detailCodeId, customCodeTiers) : null;
+  const detailTierMeta = detailCodeConfig ? TIER_METADATA[detailCodeConfig.defaultTier] : null;
 
-  // Escape closes code criteria modal
   useEffect(() => {
-    if (!detailCodeId) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setDetailCodeId(null);
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [detailCodeId]);
+    const dialog = dialogRef.current;
+    if (selectedConcern && !dialog?.open) dialog?.showModal();
+    if (!selectedConcern && dialog?.open) dialog.close();
+  }, [selectedConcern]);
 
-  const toggleAssessment = (id: string) => {
-    setOpenAssessmentIds((prev) => ({ ...prev, [id]: !prev[id] }));
-    setAssessmentErrors((prev) => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
-    setResolutionErrors((prev) => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
+  useEffect(() => {
+    if (detailCodeConfig && !criteriaRef.current?.open) criteriaRef.current?.showModal();
+  }, [detailCodeConfig]);
+
+  const openConcern = (item: EnrichedConcern, trigger: HTMLButtonElement) => {
+    rowTriggerRef.current = trigger;
+    setAssessmentDraft(item.stage === 'monitoring' ? item.esc?.nurseComment || '' : '');
+    setResolutionDraft('');
+    setAssessmentError('');
+    setResolutionError('');
+    setShowResolution(false);
+    setCheckedResolution(false);
+    setAnnouncement('');
+    setSelectedId(item.id);
   };
 
-  const toggleRecord = (id: string) => {
-    setOpenRecordIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  const handleDialogClose = () => {
+    setSelectedId(null);
+    setDetailCodeId(null);
+    const trigger = rowTriggerRef.current;
+    if (trigger?.isConnected) {
+      trigger.focus();
+    } else {
+      filterRef.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus();
+    }
   };
 
   const saveNurseIdentity = () => {
     const trimmed = nurseNameDraft.trim();
-    if (trimmed) {
-      setNurseName(trimmed);
-    } else {
-      setNurseNameDraft(nurseName);
-    }
+    if (trimmed) setNurseName(trimmed);
     setIsEditingNurseName(false);
+    queueMicrotask(() => document.getElementById('clinical-review-nurse')?.focus());
   };
 
-  const handleInsertTemplate = (concernId: string, template: string) => {
-    setAssessmentDrafts((prev) => ({ ...prev, [concernId]: template }));
-    setAssessmentErrors((prev) => {
-      const next = { ...prev };
-      delete next[concernId];
-      return next;
-    });
-    setTimeout(() => {
-      textareaRefs.current[concernId]?.focus();
-    }, 0);
-  };
-
-  const handleAcknowledge = (item: EnrichedConcern, resolveImmediately: boolean) => {
-    const draft = assessmentDrafts[item.id] || '';
+  const saveConcern = (item: EnrichedConcern, resolve: boolean) => {
+    const needsReview = item.stage === 'pending' || item.isUnescalatedWatch;
+    const useResolutionNote = resolve && !needsReview;
+    const note = (useResolutionNote ? resolutionDraft : assessmentDraft).trim();
     const check = validateVerifiedClinicalNote(
-      draft,
-      resolveImmediately
-        ? 'Document your verified clinical assessment and resolution findings before resolving.'
-        : 'Document your verified bedside assessment or monitoring plan before acknowledging.'
+      note,
+      resolve
+        ? 'Document verified clinical resolution findings before marking resolved.'
+        : 'Document your verified bedside assessment or monitoring plan before saving.'
     );
-
     if (!check.valid) {
-      setAssessmentErrors((prev) => ({ ...prev, [item.id]: check.reason || '' }));
-      textareaRefs.current[item.id]?.focus();
+      (useResolutionNote ? setResolutionError : setAssessmentError)(check.reason || '');
+      (useResolutionNote ? resolutionRef : noteRef).current?.focus();
       return;
     }
-
-    const verifiedComment = draft.trim();
+    if (resolve && !checkedResolution) return;
 
     if (item.isUnescalatedWatch) {
       if (onCreateEscalationFromWatch) {
@@ -601,73 +617,24 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
           item.room,
           item.concernHeadline,
           item.isBmOverdue && !item.codes.includes('N') ? [...item.codes, 'N'] : item.codes,
-          verifiedComment,
+          note,
           nurseName,
-          resolveImmediately
+          resolve
         );
       } else {
         onOpenResidentInHandoff(item.room);
       }
+    } else if (item.esc && needsReview) {
+      onAcknowledgeEscalation(item.esc.id, note, nurseName, resolve);
+    } else if (item.esc && resolve) {
+      onResolveEscalation(item.esc.id, nurseName, note);
     } else if (item.esc) {
-      onAcknowledgeEscalation(item.esc.id, verifiedComment, nurseName, resolveImmediately);
+      onUpdateEscalationNote(item.esc.id, note);
     }
 
-    setAssessmentDrafts((prev) => {
-      const next = { ...prev };
-      delete next[item.id];
-      return next;
-    });
-    setAssessmentErrors((prev) => {
-      const next = { ...prev };
-      delete next[item.id];
-      return next;
-    });
-    setOpenAssessmentIds((prev) => ({ ...prev, [item.id]: false }));
+    setAnnouncement(resolve ? 'Concern resolved.' : 'Assessment saved.');
+    dialogRef.current?.close();
   };
-
-  const handleSaveNoteEdit = (escId: string) => {
-    const check = validateVerifiedClinicalNote(
-      editingNoteDraft,
-      'Enter verified monitoring notes before saving.'
-    );
-    if (!check.valid) {
-      setEditingNoteError(check.reason || 'Invalid clinical note.');
-      return;
-    }
-    onUpdateEscalationNote(escId, editingNoteDraft.trim());
-    setEditingNoteId(null);
-    setEditingNoteError(null);
-  };
-
-  const handleMarkResolved = (item: EnrichedConcern) => {
-    if (!item.esc) return;
-    const draft = resolutionDrafts[item.id] || '';
-    const check = validateVerifiedClinicalNote(
-      draft,
-      'Document verified clinical resolution findings before marking resolved.'
-    );
-    if (!check.valid) {
-      setResolutionErrors((prev) => ({ ...prev, [item.id]: check.reason || '' }));
-      resolutionInputRefs.current[item.id]?.focus();
-      return;
-    }
-
-    onResolveEscalation(item.esc.id, nurseName, draft.trim());
-    setResolutionDrafts((prev) => {
-      const next = { ...prev };
-      delete next[item.id];
-      return next;
-    });
-    setResolutionErrors((prev) => {
-      const next = { ...prev };
-      delete next[item.id];
-      return next;
-    });
-    setOpenAssessmentIds((prev) => ({ ...prev, [item.id]: false }));
-  };
-
-  const detailCodeConfig = detailCodeId ? getCodeConfig(detailCodeId, customCodeTiers) : null;
-  const detailTierMeta = detailCodeConfig ? TIER_METADATA[detailCodeConfig.defaultTier] : null;
 
   const renderCodeCriteriaButtons = (codes: string[]) => {
     if (codes.length === 0) return null;
@@ -704,7 +671,6 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
   };
 
   const renderResidentRecordOnDemand = (item: EnrichedConcern) => {
-    if (!openRecordIds[item.id]) return null;
     const row = item.liveRow;
 
     return (
@@ -807,1000 +773,287 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
     );
   };
 
-  const renderAssessmentFormOnDemand = (item: EnrichedConcern) => {
-    if (!openAssessmentIds[item.id]) return null;
 
-    const assessmentDraft = assessmentDrafts[item.id] || '';
-    const assessmentError = assessmentErrors[item.id];
-    const resolutionDraft = resolutionDrafts[item.id] || '';
-    const resolutionError = resolutionErrors[item.id];
-    const templates = getAssessmentTemplates(
-      item.codes,
-      item.isBmOverdue,
-      item.isLowFluid
-    );
+  const renderSignals = (item: EnrichedConcern) => (
+    <span className="clinical-review-signals">
+      {item.isLowFluid && <span><Droplet /> Low fluid intake · {item.fluidIntakeMl} mL</span>}
+      {item.hasPendingVerification && <span><ShieldAlert /> Unverified handoff entries</span>}
+      {item.isBmOverdue && compactFinding(item) !== bowelFinding(item) && (
+        <span><Clock /> {bowelFinding(item)}</span>
+      )}
+    </span>
+  );
 
-    if (item.stage === 'pending' || item.isUnescalatedWatch) {
-      return (
-        <div className="border-t border-slate-100 bg-slate-50/75 px-5 sm:px-6 py-4 space-y-3.5">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-            <span className="font-semibold text-slate-900">
-              RN Assessment &amp; Triage Verification
-            </span>
-            <span className="text-slate-500">
-              Syncs <span className="font-medium text-slate-700">Told RN</span> to Handoff Sheet
-            </span>
-          </div>
-
-          {item.hasPendingVerification && (
-            <div className="flex items-start gap-2 text-xs text-amber-900 bg-amber-50/80 border border-amber-200 rounded-xl px-3.5 py-2.5">
-              <ShieldAlert className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" aria-hidden="true" />
-              <span>
-                This resident has unverified AI-extracted handoff entries. Confirm findings directly at bedside or on the Handoff Sheet before signing off.
+  const renderGroup = (
+    title: string,
+    Icon: typeof Clock,
+    items: EnrichedConcern[],
+    tone = '',
+  ) => items.length > 0 && (
+    <section className="clinical-review-group">
+      <h2 className={tone}><Icon /> {title} <span className="clinical-review-count">{items.length}</span></h2>
+      <div className="cb-panel clinical-review-list">
+        {items.map((item) => {
+          const FindingIcon = item.stage === 'resolved' ? Check
+            : item.isBmOverdue ? Clock
+            : item.codes.includes('C') ? SquareX
+            : item.codes.includes('H') ? PersonStanding
+            : item.codes.length ? getStopAndWatchIcon(item.codes[0])
+            : item.isLowFluid ? Droplet : HeartPulse;
+          const action = item.stage === 'resolved' ? 'View'
+            : item.stage === 'pending' || item.isUnescalatedWatch ? 'Review' : 'Follow up';
+          return (
+            <button
+              key={item.id}
+              type="button"
+              data-escalation-room={item.room}
+              className="clinical-review-row"
+              aria-haspopup="dialog"
+              onClick={(event) => openConcern(item, event.currentTarget)}
+            >
+              <span className="clinical-review-symbol" data-tone={tone}><FindingIcon /></span>
+              <span className="min-w-0">
+                <span className="clinical-review-identity">
+                  <strong>{item.residentName}</strong>
+                  <span>· Room {item.room}</span>
+                  <span>· {concernStatus(item, true)}</span>
+                </span>
+                <span className="clinical-review-finding">{compactFinding(item)}</span>
+                {renderSignals(item)}
               </span>
-            </div>
-          )}
+              <span className="clinical-review-action">{action} <ChevronRight /></span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
 
-          <div className="space-y-1.5">
-            <div className="text-[11px] font-medium text-slate-500">
-              Structured documentation templates (complete bracketed fields before saving):
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {templates.map((tpl) => (
-                <button
-                  key={tpl.label}
-                  type="button"
-                  onClick={() => handleInsertTemplate(item.id, tpl.template)}
-                  className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-xs font-medium text-slate-700 transition-colors cursor-pointer whitespace-nowrap active:scale-[0.98]"
-                >
-                  + {tpl.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
+  const renderConcernDetail = (item: EnrichedConcern) => {
+    const needsReview = item.stage === 'pending' || item.isUnescalatedWatch;
+    const resolved = item.stage === 'resolved';
+    const finding = compactFinding(item);
+    const esc = item.esc;
+    const templates = needsReview ? getAssessmentTemplates(item.codes, item.isBmOverdue, item.isLowFluid) : [];
+    return (
+      <div className="clinical-review-dialog-body">
+        <div className="clinical-review-detail-head">
           <div>
-            <label
-              htmlFor={`rn-note-${item.id}`}
-              className="block text-xs font-semibold text-slate-700 mb-1.5"
-            >
-              Verified bedside assessment &amp; monitoring plan
-            </label>
-            <textarea
-              ref={(el) => {
-                textareaRefs.current[item.id] = el;
-              }}
-              id={`rn-note-${item.id}`}
-              rows={3}
-              value={assessmentDraft}
-              onChange={(e) => {
-                setAssessmentDrafts((prev) => ({ ...prev, [item.id]: e.target.value }));
-                if (assessmentErrors[item.id]) {
-                  setAssessmentErrors((prev) => {
-                    const next = { ...prev };
-                    delete next[item.id];
-                    return next;
-                  });
-                }
-              }}
-              placeholder="Document verified bedside observations, vitals taken, or monitoring plan..."
-              className={`w-full text-sm px-3.5 py-2.5 bg-white border rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 ${
-                assessmentError
-                  ? 'border-rose-400 focus:ring-rose-500/25 focus:border-rose-500'
-                  : 'border-slate-300 focus:ring-teal-700/25 focus:border-teal-700'
-              }`}
-            />
-            {assessmentError && (
-              <p className="mt-1.5 text-xs font-medium text-rose-700" role="alert">
-                {assessmentError}
-              </p>
-            )}
+            <p className="clinical-review-sub">Room {item.room} · {concernStatus(item)}</p>
+            <h2 id="clinical-review-dialog-title">{item.residentName}</h2>
           </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-xs text-slate-500">
-              Signing as <span className="font-semibold text-slate-800">{nurseName}</span>
-            </span>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => toggleAssessment(item.id)}
-                className="min-h-[40px] px-3.5 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => handleAcknowledge(item, true)}
-                className="min-h-[40px] px-3.5 py-2 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap active:scale-[0.98]"
-              >
-                Acknowledge &amp; Resolve
-              </button>
-              <button
-                type="button"
-                onClick={() => handleAcknowledge(item, false)}
-                className="min-h-[40px] px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap active:scale-[0.98]"
-              >
-                <Check className="w-3.5 h-3.5" />
-                <span>Acknowledge &amp; Monitor</span>
-              </button>
-            </div>
-          </div>
+          <button type="button" autoFocus className="clinical-review-close" aria-label="Close clinical review"
+            onClick={() => dialogRef.current?.close()}><X /></button>
         </div>
-      );
-    }
-
-    if (item.stage === 'monitoring' && item.esc) {
-      const esc = item.esc;
-      return (
-        <div className="border-t border-slate-100 bg-slate-50/75 px-5 sm:px-6 py-4 space-y-4">
-          {/* Edit Existing Monitoring Plan */}
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-              <span className="font-semibold text-slate-900">
-                RN Monitoring Plan ({esc.acknowledgedBy || nurseName}
-                {esc.acknowledgedAt ? ` · ${esc.acknowledgedAt}` : ''})
-              </span>
-              {editingNoteId !== esc.id && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingNoteId(esc.id);
-                    setEditingNoteDraft(esc.nurseComment || '');
-                    setEditingNoteError(null);
-                  }}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-900 px-2 py-1 rounded-lg hover:bg-slate-200/60 cursor-pointer"
-                >
-                  <Pencil className="w-3 h-3" />
-                  <span>Edit assessment</span>
-                </button>
-              )}
-            </div>
-
-            {editingNoteId === esc.id ? (
-              <div className="space-y-2">
-                <textarea
-                  rows={2}
-                  value={editingNoteDraft}
-                  onChange={(e) => {
-                    setEditingNoteDraft(e.target.value);
-                    if (editingNoteError) setEditingNoteError(null);
-                  }}
-                  aria-label="Edit nurse monitoring plan"
-                  className="w-full text-sm px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-700/25 focus:border-teal-700"
-                />
-                {editingNoteError && (
-                  <p className="text-xs font-medium text-rose-700" role="alert">
-                    {editingNoteError}
-                  </p>
-                )}
-                <div className="flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingNoteId(null);
-                      setEditingNoteError(null);
-                    }}
-                    className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200/60 rounded-lg cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSaveNoteEdit(esc.id)}
-                    className="px-3.5 py-1.5 text-xs font-semibold bg-teal-700 hover:bg-teal-800 text-white rounded-lg cursor-pointer"
-                  >
-                    Save assessment
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-slate-700 leading-relaxed">
-                {esc.nurseComment || 'No monitoring note recorded.'}
-              </p>
-            )}
-          </div>
-
-          {/* Resolve Episode */}
-          <div className="pt-3 border-t border-slate-200/80 space-y-2">
-            <label
-              htmlFor={`resolve-note-${item.id}`}
-              className="block text-xs font-semibold text-slate-700"
-            >
-              Verified clinical resolution outcome
-            </label>
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
-              <input
-                ref={(el) => {
-                  resolutionInputRefs.current[item.id] = el;
-                }}
-                id={`resolve-note-${item.id}`}
-                type="text"
-                value={resolutionDraft}
-                onChange={(e) => {
-                  setResolutionDrafts((prev) => ({
-                    ...prev,
-                    [item.id]: e.target.value,
-                  }));
-                  if (resolutionErrors[item.id]) {
-                    setResolutionErrors((prev) => {
-                      const next = { ...prev };
-                      delete next[item.id];
-                      return next;
-                    });
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleMarkResolved(item);
-                }}
-                placeholder="Document verified resolution findings (e.g., oral intake ≥1000 mL, heel blanching normal)..."
-                className={`flex-1 min-w-0 text-sm px-3.5 py-2 bg-white border rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 ${
-                  resolutionError
-                    ? 'border-rose-400 focus:ring-rose-500/25 focus:border-rose-500'
-                    : 'border-slate-300 focus:ring-emerald-700/25 focus:border-emerald-700'
-                }`}
-              />
-              <button
-                type="button"
-                onClick={() => handleMarkResolved(item)}
-                className="min-h-[40px] px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer inline-flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap active:scale-[0.98]"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Mark Resolved</span>
-              </button>
-            </div>
-            {resolutionError && (
-              <p className="text-xs font-medium text-rose-700" role="alert">
-                {resolutionError}
-              </p>
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    if (item.stage === 'resolved' && item.esc) {
-      const esc = item.esc;
-      return (
-        <div className="border-t border-slate-100 bg-slate-50/75 px-5 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="space-y-1 text-slate-700">
-            <div>
-              <span className="font-semibold text-emerald-800">Clinically resolved</span> by{' '}
-              <span className="font-semibold text-slate-900">
-                {esc.resolvedBy || esc.acknowledgedBy || nurseName}
-              </span>
-              {esc.resolvedAt && (
-                <span className="font-mono tabular-nums text-slate-500 ml-1">
-                  · {esc.resolvedAt}
-                </span>
-              )}
-            </div>
-            {(esc.resolutionNote || esc.nurseComment) && (
-              <p className="text-slate-700">
-                {esc.resolutionNote || esc.nurseComment}
-              </p>
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => onReopenEscalation(esc.id)}
-            className="min-h-[38px] inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-950 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors cursor-pointer whitespace-nowrap active:scale-[0.98]"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reopen to monitoring</span>
-          </button>
-        </div>
-      );
-    }
-
-    return null;
-  };
-
-  const renderUrgencyAndContextLine = (item: EnrichedConcern) => {
-    const isUrgent = item.effectiveTier === 3 || item.isBmOverdue;
-    const urgencyColor = isUrgent
-      ? 'text-rose-800'
-      : item.effectiveTier === 2
-      ? 'text-amber-800'
-      : 'text-sky-800';
-    const UrgencyIcon = isUrgent
-      ? OctagonAlert
-      : item.effectiveTier === 2
-      ? AlertTriangle
-      : Info;
-
-    return (
-      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs">
-        <span className={`inline-flex items-center gap-1.5 font-semibold ${urgencyColor}`}>
-          <UrgencyIcon className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-          <span>{getUrgencyLabel(item)}</span>
-        </span>
-
-        {item.prevShiftTier && (
-          <>
-            <span className="text-slate-300" aria-hidden="true">·</span>
-            <span className="text-slate-600 font-medium">
-              Prior shift: Tier {item.prevShiftTier}
-              {item.escalatedByRepeat ? ' (repeat escalated)' : ''}
-            </span>
-          </>
+        <section className="clinical-review-block">
+          <h3 className={item.isPriorityAttention ? 'priority' : undefined}>
+            {item.isPriorityAttention ? 'Priority attention' : 'Reported concern'}
+          </h3>
+          <p><strong>{finding}</strong></p>
+          {renderSignals(item)}
+          <p>{[
+            finding !== item.concernHeadline ? item.concernHeadline : '',
+            item.qualitativeObservation !== item.concernHeadline ? item.qualitativeObservation : '',
+          ].filter(Boolean).join(' · ')}</p>
+          <p className="clinical-review-sub">{item.outgoingPsw} · {item.timestamp}</p>
+        </section>
+        {esc?.nurseComment && (
+          <section className="clinical-review-block">
+            <h3>Latest nurse assessment</h3>
+            <p>{esc.nurseComment}</p>
+            <p className="clinical-review-sub">{[esc.acknowledgedBy, esc.acknowledgedAt].filter(Boolean).join(' · ')}</p>
+          </section>
         )}
-
-        {item.escalatedByCount && (
-          <>
-            <span className="text-slate-300" aria-hidden="true">·</span>
-            <span className="text-amber-800 font-medium">
-              3+ changes (Base Tier {item.baseTier} → Tier {item.effectiveTier})
-            </span>
-          </>
+        {resolved && esc && (
+          <section className="clinical-review-block">
+            <h3>Resolution</h3>
+            {esc.resolutionNote && <p>{esc.resolutionNote}</p>}
+            <p className="clinical-review-sub">{[esc.resolvedBy || esc.acknowledgedBy, esc.resolvedAt].filter(Boolean).join(' · ')}</p>
+          </section>
         )}
-
-        <span className="text-slate-300" aria-hidden="true">·</span>
-
-        {item.isUnescalatedWatch ? (
-          <span className="font-semibold text-amber-800">Threshold watch · Unacknowledged</span>
-        ) : item.stage === 'pending' ? (
-          <span className="font-semibold text-rose-700">Awaiting RN review</span>
-        ) : item.stage === 'monitoring' ? (
-          <span className="font-medium text-teal-800">
-            Monitoring
-            {item.esc?.acknowledgedBy ? ` · ${item.esc.acknowledgedBy}` : ''}
-            {item.esc?.acknowledgedAt ? ` · ${item.esc.acknowledgedAt}` : ''}
-          </span>
-        ) : (
-          <span className="font-medium text-emerald-800">
-            Resolved
-            {item.esc?.resolvedBy ? ` · ${item.esc.resolvedBy}` : ''}
-            {item.esc?.resolvedAt ? ` · ${item.esc.resolvedAt}` : ''}
-          </span>
-        )}
-      </div>
-    );
-  };
-
-  const renderLatestAssessmentLine = (item: EnrichedConcern) => {
-    if (item.stage === 'pending' || item.isUnescalatedWatch) {
-      return (
-        <div className="flex items-start gap-2 text-xs text-slate-500 pt-0.5">
-          <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" aria-hidden="true" />
-          <span>
-            <span className="font-semibold text-slate-700">Latest RN assessment:</span> No bedside RN review recorded yet.
-          </span>
-        </div>
-      );
-    }
-
-    if (item.stage === 'monitoring' && item.esc) {
-      return (
-        <div className="flex items-start gap-2 text-xs text-slate-700 pt-0.5">
-          <UserCheck className="w-3.5 h-3.5 text-teal-700 shrink-0 mt-0.5" aria-hidden="true" />
-          <span className="leading-relaxed">
-            <span className="font-semibold text-teal-900">
-              Latest RN assessment ({item.esc.acknowledgedBy || nurseName}
-              {item.esc.acknowledgedAt ? ` · ${item.esc.acknowledgedAt}` : ''}):
-            </span>{' '}
-            {item.esc.nurseComment || 'Monitoring in progress.'}
-          </span>
-        </div>
-      );
-    }
-
-    if (item.stage === 'resolved' && item.esc) {
-      return (
-        <div className="flex items-start gap-2 text-xs text-slate-600 pt-0.5">
-          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 shrink-0 mt-0.5" aria-hidden="true" />
-          <span className="leading-relaxed">
-            <span className="font-semibold text-emerald-800">
-              Resolution ({item.esc.resolvedBy || item.esc.acknowledgedBy || nurseName}
-              {item.esc.resolvedAt ? ` · ${item.esc.resolvedAt}` : ''}):
-            </span>{' '}
-            {item.esc.resolutionNote || item.esc.nurseComment || 'Concern resolved.'}
-          </span>
-        </div>
-      );
-    }
-
-    return null;
-  };
-
-  const renderActionButtons = (item: EnrichedConcern) => {
-    const isAssessmentOpen = Boolean(openAssessmentIds[item.id]);
-    const isRecordOpen = Boolean(openRecordIds[item.id]);
-
-    const primaryLabel =
-      item.stage === 'pending' || item.isUnescalatedWatch
-        ? isAssessmentOpen
-          ? 'Close assessment'
-          : 'Assess & Acknowledge'
-        : item.stage === 'monitoring'
-        ? isAssessmentOpen
-          ? 'Close follow-up'
-          : 'Update / Resolve'
-        : isAssessmentOpen
-        ? 'Close'
-        : 'Review / Reopen';
-
-    return (
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          aria-expanded={isAssessmentOpen}
-          onClick={() => toggleAssessment(item.id)}
-          className={`min-h-[40px] px-4 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700/40 ${
-            (item.stage === 'pending' || item.isUnescalatedWatch) && !isAssessmentOpen
-              ? 'bg-teal-700 hover:bg-teal-800 text-white'
-              : 'bg-white hover:bg-slate-100 text-slate-800 border border-slate-200'
-          }`}
-        >
-          <ClipboardCheck className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-          <span>{primaryLabel}</span>
-        </button>
-
-        <button
-          type="button"
-          aria-expanded={isRecordOpen}
-          onClick={() => toggleRecord(item.id)}
-          className={`min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700/40 ${
-            isRecordOpen
-              ? 'bg-slate-200/80 text-slate-900'
-              : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200/80'
-          }`}
-        >
-          <FileText className="w-3.5 h-3.5 shrink-0 opacity-75" aria-hidden="true" />
-          <span>{isRecordOpen ? 'Hide record' : 'Resident record'}</span>
-        </button>
-      </div>
-    );
-  };
-
-  // Full-width Priority Attention Card
-  const renderPriorityCard = (item: EnrichedConcern) => {
-    return (
-      <article
-        key={item.id}
-        data-escalation-room={item.room}
-        className="bg-white border border-rose-200/80 rounded-2xl overflow-hidden"
-      >
-        <div className="p-5 sm:p-6 flex flex-col lg:flex-row lg:items-stretch justify-between gap-6">
-          {/* Primary Clinical Information */}
-          <div className="min-w-0 flex-1 space-y-3">
-            {renderUrgencyAndContextLine(item)}
-
-            {/* Prominent Resident Identity */}
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <h3 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-                {item.residentName}
-              </h3>
-              <span className="text-sm font-mono tabular-nums font-semibold text-slate-500">
-                Room {item.room}
-              </span>
-              <span className="text-xs text-slate-500 tabular-nums">
-                · Reported <span className="font-mono">{item.timestamp}</span> by {item.outgoingPsw}
-              </span>
-            </div>
-
-            {/* Readable Clinical Findings & Observations */}
-            <div className="space-y-1.5">
-              <p className="text-[15px] sm:text-base font-semibold text-slate-900 leading-snug">
-                {item.concernHeadline}
-              </p>
-              {item.qualitativeObservation &&
-                item.qualitativeObservation.toLowerCase() !== item.concernHeadline.toLowerCase() && (
-                  <p className="text-sm text-slate-600 leading-relaxed max-w-3xl">
-                    {item.qualitativeObservation}
-                  </p>
-                )}
-            </div>
-
+        <details className="clinical-review-block">
+          <summary>Clinical context</summary>
+          <div className="space-y-3 pb-2 text-sm">
+            <p>{getUrgencyLabel(item)}</p>
+            {item.isPriorityAttention && item.abnormalMetrics.length === 0 && (
+              <p>Immediate RN evaluation indicated</p>
+            )}
+            {item.prevShiftTier && <p>Prior shift: Tier {item.prevShiftTier}{item.escalatedByRepeat ? ' (repeat escalated)' : ''}</p>}
+            {item.escalatedByCount && <p>3+ changes (Base Tier {item.baseTier} → Tier {item.effectiveTier})</p>}
+            {item.abnormalMetrics.map((metric) => (
+              <p key={metric.key}>{metric.label}: {metric.value} {metric.unit} · {metric.thresholdNote}</p>
+            ))}
             {renderCodeCriteriaButtons(item.codes)}
-
-            <div className="pt-2 border-t border-slate-100">
-              {renderLatestAssessmentLine(item)}
-            </div>
           </div>
-
-          {/* Relevant Abnormal Measurements & Actions */}
-          <div className="lg:w-80 shrink-0 flex flex-col justify-between gap-5 lg:border-l lg:border-slate-100 lg:pl-6">
-            <div>
-              {item.abnormalMetrics.length > 0 ? (
-                <div className="space-y-3">
-                  <div className="text-[11px] font-semibold text-slate-500">
-                    Abnormal measurements
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3.5">
-                    {item.abnormalMetrics.map((metric) => (
-                      <div key={metric.key} className="flex items-baseline justify-between gap-3">
-                        <div>
-                          <div className="text-xs font-medium text-slate-600">{metric.label}</div>
-                          <div className="text-[11px] text-slate-400 tabular-nums">
-                            {metric.thresholdNote}
-                          </div>
-                        </div>
-                        <div
-                          className={`text-2xl font-bold font-mono tabular-nums tracking-tight ${
-                            metric.severity === 'urgent' ? 'text-rose-800' : 'text-amber-800'
-                          }`}
-                        >
-                          {metric.value}
-                          <span className="text-sm font-semibold ml-1">{metric.unit}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  <div className="text-[11px] font-semibold text-slate-500">
-                    Clinical trigger
-                  </div>
-                  <div className="text-2xl font-bold font-mono tabular-nums text-rose-800">
-                    Tier {item.effectiveTier}
-                  </div>
-                  <div className="text-xs text-slate-500">
-                    Immediate RN evaluation indicated
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="pt-2">{renderActionButtons(item)}</div>
-          </div>
-        </div>
-
-        {renderResidentRecordOnDemand(item)}
-        {renderAssessmentFormOnDemand(item)}
-      </article>
-    );
-  };
-
-  // Care Follow-Up Card (Used in Two-Column Layout)
-  const renderFollowUpCard = (item: EnrichedConcern) => {
-    return (
-      <article
-        key={item.id}
-        data-escalation-room={item.room}
-        className="bg-white border border-slate-200 rounded-2xl overflow-hidden"
-      >
-        <div className="p-5 space-y-4">
-          <div className="space-y-2">
-            {renderUrgencyAndContextLine(item)}
-
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
-                <h3 className="text-lg font-bold text-slate-900 tracking-tight">
-                  {item.residentName}
-                </h3>
-                <span className="text-xs font-mono tabular-nums font-semibold text-slate-500">
-                  Room {item.room}
-                </span>
+          {renderResidentRecordOnDemand(item)}
+          {templates.length > 0 && (
+            <details>
+              <summary>Documentation templates</summary>
+              <div className="flex flex-wrap gap-1.5">
+                {templates.map((template) => (
+                  <button type="button" key={template.label} className="clinical-review-template" onClick={() => {
+                    setAssessmentDraft(template.template);
+                    setAssessmentError('');
+                    setCheckedResolution(false);
+                    noteRef.current?.focus();
+                  }}>+ {template.label}</button>
+                ))}
               </div>
-              <span className="text-xs text-slate-500 tabular-nums">
-                <span className="font-mono">{item.timestamp}</span> · {item.outgoingPsw}
-              </span>
-            </div>
-          </div>
-
-          {/* Clinical Findings & Observations */}
-          <div className="space-y-1.5">
-            <p className="text-[15px] font-semibold text-slate-900 leading-snug">
-              {item.concernHeadline}
-            </p>
-            {item.qualitativeObservation &&
-              item.qualitativeObservation.toLowerCase() !== item.concernHeadline.toLowerCase() && (
-                <p className="text-sm text-slate-600 leading-relaxed">
-                  {item.qualitativeObservation}
-                </p>
-              )}
-          </div>
-
-          {renderCodeCriteriaButtons(item.codes)}
-
-          {/* Abnormal Measurements (Larger Tabular Figures) */}
-          {item.abnormalMetrics.length > 0 && (
-            <div className="flex flex-wrap items-center gap-6 pt-2 border-t border-slate-100">
-              {item.abnormalMetrics.map((metric) => (
-                <div key={metric.key} className="flex items-baseline gap-2.5">
-                  <span
-                    className={`text-xl font-bold font-mono tabular-nums tracking-tight ${
-                      metric.severity === 'urgent' ? 'text-rose-800' : 'text-amber-800'
-                    }`}
-                  >
-                    {metric.value}
-                    <span className="text-xs font-semibold ml-0.5">{metric.unit}</span>
-                  </span>
-                  <span className="text-xs text-slate-500">
-                    {metric.label} ({metric.thresholdNote})
-                  </span>
-                </div>
-              ))}
-            </div>
+            </details>
           )}
-
-          {/* Latest Nurse Assessment */}
-          <div className="pt-2 border-t border-slate-100">
-            {renderLatestAssessmentLine(item)}
+        </details>
+        {item.hasPendingVerification && (
+          <p className="clinical-review-warning">
+            <ShieldAlert /> This resident has unverified AI-extracted handoff entries. Confirm findings directly at bedside or on the Handoff Sheet before signing off.
+          </p>
+        )}
+        {resolved && esc ? (
+          <div className="clinical-review-block clinical-review-actions">
+            <Button variant="primary" onClick={() => {
+              onReopenEscalation(esc.id);
+              setAnnouncement('Concern reopened for monitoring.');
+              dialogRef.current?.close();
+            }}>Reopen for monitoring</Button>
           </div>
-
-          {/* On-Demand Action */}
-          <div className="pt-1">{renderActionButtons(item)}</div>
-        </div>
-
-        {renderResidentRecordOnDemand(item)}
-        {renderAssessmentFormOnDemand(item)}
-      </article>
-    );
-  };
-
-  // Resolved Row (Quiet, Accessible Without Competing)
-  const renderResolvedItem = (item: EnrichedConcern) => {
-    return (
-      <div key={item.id} data-escalation-room={item.room} className="bg-white">
-        <div className="px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="min-w-0 flex-1 space-y-1">
-            <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-              <span className="text-base font-bold text-slate-900">{item.residentName}</span>
-              <span className="text-xs font-mono tabular-nums font-semibold text-slate-500">
-                Room {item.room}
-              </span>
-              <span className="text-slate-300" aria-hidden="true">·</span>
-              <span className="text-xs font-medium text-slate-600">{item.concernHeadline}</span>
+        ) : (
+          <form className="clinical-review-block" onSubmit={(event) => {
+            event.preventDefault();
+            saveConcern(item, false);
+          }}>
+            <label htmlFor="clinical-review-note"><strong>Assessment / follow-up</strong></label>
+            <textarea className="cb-field"
+              ref={noteRef}
+              id="clinical-review-note"
+              aria-invalid={Boolean(assessmentError)}
+              value={assessmentDraft}
+              onChange={(event) => {
+                setAssessmentDraft(event.target.value);
+                setAssessmentError('');
+                if (needsReview) setCheckedResolution(false);
+              }}
+              placeholder="Record verified findings and actions..."
+            />
+            {assessmentError && <p role="alert" className="priority">{assessmentError}</p>}
+            <div className="clinical-review-actions">
+              <Button type="submit" variant="primary">{needsReview ? 'Save & monitor' : 'Save follow-up'}</Button>
+              <Button aria-expanded={showResolution}
+                onClick={() => {
+                  setShowResolution(!showResolution);
+                  setCheckedResolution(false);
+                  setResolutionError('');
+                }}>Resolve concern</Button>
             </div>
-            {renderLatestAssessmentLine(item)}
-          </div>
-
-          <div className="shrink-0">{renderActionButtons(item)}</div>
-        </div>
-
-        {renderResidentRecordOnDemand(item)}
-        {renderAssessmentFormOnDemand(item)}
+            {showResolution && (
+              <div className="clinical-review-block">
+                {!needsReview && (
+                  <>
+                    <label htmlFor="clinical-review-resolution"><strong>Verified clinical resolution outcome</strong></label>
+                    <textarea className="cb-field" id="clinical-review-resolution" ref={resolutionRef} value={resolutionDraft}
+                      aria-invalid={Boolean(resolutionError)}
+                      onChange={(event) => {
+                        setResolutionDraft(event.target.value);
+                        setCheckedResolution(false);
+                        setResolutionError('');
+                      }} />
+                    {resolutionError && <p role="alert" className="priority">{resolutionError}</p>}
+                  </>
+                )}
+                <label className="clinical-review-verify">
+                  <input type="checkbox" checked={checkedResolution}
+                    onChange={(event) => setCheckedResolution(event.target.checked)} />
+                  I verified that this concern is resolved.
+                </label>
+                <div className="clinical-review-actions">
+                  <Button disabled={!checkedResolution}
+                    onClick={() => saveConcern(item, true)}>Confirm resolution</Button>
+                </div>
+              </div>
+            )}
+          </form>
+        )}
       </div>
     );
   };
 
-  const overviewFilters: {
-    id: TriageFilter;
-    label: string;
-    count: number;
-    toneClass: string;
-  }[] = [
-    {
-      id: 'all',
-      label: 'All active',
-      count: totalActiveCount,
-      toneClass: 'text-slate-900',
-    },
-    {
-      id: 'pending',
-      label: 'Needs review',
-      count: pendingItemsAll.length,
-      toneClass: pendingItemsAll.length > 0 ? 'text-rose-700' : 'text-slate-900',
-    },
-    {
-      id: 'monitoring',
-      label: 'Monitoring',
-      count: monitoringItemsAll.length,
-      toneClass: 'text-teal-800',
-    },
-    {
-      id: 'resolved',
-      label: 'Resolved',
-      count: resolvedItems.length,
-      toneClass: 'text-emerald-700',
-    },
+  const filters: { id: TriageFilter; label: string; count: number }[] = [
+    { id: 'all', label: 'Active', count: totalActiveCount },
+    { id: 'pending', label: 'Needs review', count: pendingItemsAll.length },
+    { id: 'resolved', label: 'History', count: resolvedItems.length },
   ];
-
-  const showPendingColumn = filter === 'all' || filter === 'pending';
-  const showMonitoringColumn = filter === 'all' || filter === 'monitoring';
+  const shiftLabel = shift?.replace(/^(Day|Evening|Night) \(.*\)$/, '$1 shift');
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ type: 'spring', bounce: 0, duration: 0.25 }}
-      className="space-y-6"
-    >
-      {/* AREA 1: Compact Overview with Needs review, Monitoring, and Resolved counts + functional filters */}
-      <section
-        aria-label="Clinical overview summary"
-        className="bg-white border border-slate-200 rounded-2xl px-5 py-4 space-y-4"
-      >
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
-              Charge Nurse Clinical Overview
-            </h1>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {unit}
-              {shift ? ` · ${shift}` : ''}
-            </p>
-          </div>
-
-          {/* Duty RN Identity (Read-First, Edit-on-Demand) */}
-          <div className="flex items-center gap-2 text-xs self-start sm:self-auto">
-            {isEditingNurseName ? (
-              <div className="flex items-center gap-1.5">
-                <label htmlFor="duty-rn-input" className="sr-only">
-                  Duty nurse name and credentials
-                </label>
-                <input
-                  id="duty-rn-input"
-                  type="text"
-                  value={nurseNameDraft}
-                  onChange={(e) => setNurseNameDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') saveNurseIdentity();
-                    if (e.key === 'Escape') {
-                      setNurseNameDraft(nurseName);
-                      setIsEditingNurseName(false);
-                    }
-                  }}
-                  autoFocus
-                  className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-teal-700/30 w-36"
-                />
-                <button
-                  type="button"
-                  onClick={saveNurseIdentity}
-                  className="px-2.5 py-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded-lg font-semibold cursor-pointer"
-                >
-                  Save
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-1.5 text-slate-600">
-                <span>
-                  <span className="text-slate-400">Signing as </span>
-                  <span className="font-semibold text-slate-900">{nurseName}</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNurseNameDraft(nurseName);
-                    setIsEditingNurseName(true);
-                  }}
-                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                  aria-label="Edit signing nurse name"
-                  title="Change signing nurse"
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Functional Overview Count Filters */}
-        <div
-          role="tablist"
-          aria-label="Filter clinical overview"
-          className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-3 border-t border-slate-100"
-        >
-          {overviewFilters.map((tab) => {
-            const isActive = filter === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                onClick={() => setFilter(tab.id)}
-                className={`px-3.5 py-2.5 rounded-xl border text-left transition-colors cursor-pointer flex items-baseline justify-between gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700/40 active:scale-[0.99] ${
-                  isActive
-                    ? 'bg-teal-50/70 border-teal-700/40 text-slate-900'
-                    : 'bg-slate-50/60 border-slate-200/80 text-slate-600 hover:bg-slate-100/70 hover:text-slate-900'
-                }`}
-              >
-                <span className="text-xs font-semibold whitespace-nowrap">{tab.label}</span>
-                <span
-                  className={`text-lg font-bold font-mono tabular-nums ${
-                    isActive ? tab.toneClass : 'text-slate-700'
-                  }`}
-                >
-                  {tab.count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* AREA 2: Full-Width Priority Attention (Highest-priority active concerns, independent of acknowledgment & filters) */}
-      <section aria-label="Priority attention" className="space-y-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2 px-1">
-          <div className="flex items-center gap-2">
-            <OctagonAlert
-              className={`w-4 h-4 shrink-0 ${
-                priorityAttentionItems.length > 0 ? 'text-rose-700' : 'text-emerald-600'
-              }`}
-              aria-hidden="true"
-            />
-            <h2 className="text-sm font-bold text-slate-900 tracking-tight">
-              Priority Attention
-              <span className="font-mono tabular-nums text-slate-500 font-semibold ml-2">
-                {priorityAttentionItems.length}
-              </span>
-            </h2>
-          </div>
-          <p className="text-xs text-slate-500">
-            {filter !== 'all' && priorityAttentionItems.length > 0
-              ? 'Always visible — active urgent concerns are never concealed by filters or acknowledgment status'
-              : 'Highest-priority active concerns, independent of RN acknowledgment'}
-          </p>
-        </div>
-
-        {priorityAttentionItems.length === 0 ? (
-          <div className="bg-white border border-slate-200 rounded-2xl px-5 py-4 flex items-center gap-2.5 text-sm text-slate-600">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" aria-hidden="true" />
-            <span>No Tier 3 or overdue bowel concerns currently require priority attention.</span>
-          </div>
+    <div className="clinical-review">
+      <PageHeader title="Clinical review" subtitle={<span title={shift}>{[unit, shiftLabel].filter(Boolean).join(' · ')}</span>}
+        actions={isEditingNurseName ? (
+          <form className="clinical-review-nurse" onSubmit={(event) => {
+            event.preventDefault();
+            saveNurseIdentity();
+          }}>
+            <input aria-label="Duty nurse name and credentials" autoFocus value={nurseNameDraft}
+              onChange={(event) => setNurseNameDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  setIsEditingNurseName(false);
+                  queueMicrotask(() => document.getElementById('clinical-review-nurse')?.focus());
+                }
+              }} />
+            <button type="submit">Save</button>
+          </form>
         ) : (
-          <div className="space-y-3.5">{priorityAttentionItems.map(renderPriorityCard)}</div>
-        )}
-      </section>
-
-      {/* AREA 3: Two-Column Care Follow-up (Other pending reviews & Ongoing monitoring) */}
-      {filter !== 'resolved' && (
-        <section aria-label="Care follow-up" className="space-y-3">
-          <div className="flex flex-wrap items-baseline justify-between gap-2 px-1">
-            <h2 className="text-sm font-bold text-slate-900 tracking-tight">Care Follow-up</h2>
-            <p className="text-xs text-slate-500">
-              {filter === 'all'
-                ? 'Other pending reviews and ongoing shift monitoring'
-                : filter === 'pending'
-                ? 'Filtered to other pending reviews'
-                : 'Filtered to ongoing monitoring'}
-            </p>
-          </div>
-
-          <div
-            className={`grid grid-cols-1 gap-5 items-start ${
-              showPendingColumn && showMonitoringColumn ? 'lg:grid-cols-2' : ''
-            }`}
-          >
-            {/* Column 1: Other Pending Reviews */}
-            {showPendingColumn && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between px-1">
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-amber-700 shrink-0" aria-hidden="true" />
-                    <h3 className="text-[13px] font-bold text-slate-800">
-                      Other pending reviews
-                      <span className="font-mono tabular-nums text-slate-500 font-semibold ml-1.5">
-                        {otherPendingItems.length}
-                      </span>
-                    </h3>
-                  </div>
-                  <span className="text-xs text-slate-400">Awaiting RN triage</span>
-                </div>
-
-                {otherPendingItems.length === 0 ? (
-                  <div className="bg-white border border-slate-200 rounded-2xl px-5 py-6 text-sm text-slate-500 space-y-1.5">
-                    <div className="flex items-center gap-2 text-slate-700 font-medium">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" aria-hidden="true" />
-                      <span>No other pending reviews.</span>
-                    </div>
-                    {pendingItemsAll.length > 0 && (
-                      <p className="text-xs text-slate-500 pl-6">
-                        Urgent pending reviews are surfaced in Priority Attention above.
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-3.5">{otherPendingItems.map(renderFollowUpCard)}</div>
-                )}
-              </div>
-            )}
-
-            {/* Column 2: Ongoing Monitoring */}
-            {showMonitoringColumn && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between px-1">
-                  <div className="flex items-center gap-2">
-                    <UserCheck className="w-4 h-4 text-teal-700 shrink-0" aria-hidden="true" />
-                    <h3 className="text-[13px] font-bold text-slate-800">
-                      Ongoing monitoring
-                      <span className="font-mono tabular-nums text-slate-500 font-semibold ml-1.5">
-                        {otherMonitoringItems.length}
-                      </span>
-                    </h3>
-                  </div>
-                  <span className="text-xs text-slate-400">Active this shift</span>
-                </div>
-
-                {otherMonitoringItems.length === 0 ? (
-                  <div className="bg-white border border-slate-200 rounded-2xl px-5 py-6 text-sm text-slate-500 space-y-1.5">
-                    {monitoringItemsAll.length > 0 ? (
-                      <>
-                        <p className="font-medium text-slate-700">
-                          {monitoringItemsAll.length} active monitoring{' '}
-                          {monitoringItemsAll.length === 1 ? 'case is' : 'cases are'} elevated in Priority Attention above.
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          Tier 1 or Tier 2 cases acknowledged for monitoring will appear here.
-                        </p>
-                      </>
-                    ) : (
-                      <p>No additional residents currently in ongoing monitoring.</p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-3.5">{otherMonitoringItems.map(renderFollowUpCard)}</div>
-                )}
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* Accessible Resolved Cases (Does Not Compete with Active Concerns) */}
-      <section
-        aria-label="Resolved this shift"
-        className="bg-white border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100"
-      >
-        {filter !== 'resolved' ? (
-          <button
-            type="button"
-            aria-expanded={showResolvedDrawer}
-            onClick={() => setShowResolvedDrawer((prev) => !prev)}
-            className="w-full px-5 py-3.5 bg-slate-50/50 hover:bg-slate-50 flex items-center justify-between text-xs cursor-pointer transition-colors"
-          >
-            <span className="inline-flex items-center gap-2 font-semibold text-slate-700">
-              <CheckCircle2 className="w-4 h-4 text-emerald-700" aria-hidden="true" />
-              <span>
-                Resolved this shift
-                <span className="font-mono tabular-nums text-slate-500 font-medium ml-1.5">
-                  {resolvedItems.length}
-                </span>
-              </span>
-            </span>
-            <span className="inline-flex items-center gap-1.5 text-slate-500">
-              <span>{showResolvedDrawer ? 'Hide' : 'Show resolved'}</span>
-              {showResolvedDrawer ? (
-                <ChevronUp className="w-4 h-4 text-slate-400" />
-              ) : (
-                <ChevronDown className="w-4 h-4 text-slate-400" />
-              )}
-            </span>
+          <button type="button" id="clinical-review-nurse" className="clinical-review-nurse"
+            aria-label={nurseName + ', edit signing nurse name'}
+            onClick={() => {
+              setNurseNameDraft(nurseName);
+              setIsEditingNurseName(true);
+            }}>
+            <span className="clinical-review-avatar"><UserRound /></span>{nurseName}
           </button>
-        ) : (
-          <div className="px-5 py-3.5 bg-slate-50/70 flex items-center justify-between text-xs">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-700" aria-hidden="true" />
-              <h2 className="font-bold text-slate-900">
-                Resolved this shift
-                <span className="font-mono tabular-nums text-slate-500 font-semibold ml-1.5">
-                  {resolvedItems.length}
-                </span>
-              </h2>
-            </div>
-            <span className="text-slate-400">Closed clinical episodes</span>
-          </div>
-        )}
-
-        {(filter === 'resolved' || showResolvedDrawer) &&
-          (resolvedItems.length === 0 ? (
-            <div className="px-5 py-6 text-center text-sm text-slate-500">
-              No escalations marked resolved yet this shift.
-            </div>
-          ) : (
-            resolvedItems.map(renderResolvedItem)
-          ))}
-      </section>
-
-      {/* Quiet Clinical Safeguard Note */}
-      <p className="text-[11px] text-slate-400 px-1">
-        Decision support only — the Charge Nurse retains all clinical assessment, verification, and triage decisions.
-      </p>
-
-      {/* Stop & Watch Clinical Reference Modal */}
-      {detailCodeConfig && detailTierMeta && (
-        <StopAndWatchDetailModal
-          config={detailCodeConfig}
-          tierMeta={detailTierMeta}
-          onClose={() => setDetailCodeId(null)}
-        />
+        )} />
+      <nav className="clinical-review-tabs" aria-label="Review filters" ref={filterRef}>
+        {filters.map((tab) => (
+          <button key={tab.id} type="button" aria-pressed={filter === tab.id} onClick={() => setFilter(tab.id)}>
+            {tab.label}<span className="clinical-review-count">{tab.count}</span>
+          </button>
+        ))}
+      </nav>
+      {renderGroup('Priority attention', CircleAlert, priorityAttentionItems, 'priority')}
+      {filter === 'resolved' ? (
+        resolvedItems.length ? renderGroup('History', Check, resolvedItems, 'history')
+          : <p className="clinical-review-empty">No resolved concerns this shift.</p>
+      ) : (
+        <>
+          {renderGroup('Needs review', Clock, otherPendingItems, 'pending')}
+          {filter === 'all' && renderGroup('Monitoring', HeartPulse, otherMonitoringItems)}
+          {filter === 'all' && totalActiveCount === 0 && <p className="clinical-review-empty">No active concerns.</p>}
+          {filter === 'pending' && !pendingItemsAll.length && !priorityAttentionItems.length && (
+            <p className="clinical-review-empty">No concerns need review.</p>
+          )}
+        </>
       )}
-    </motion.div>
+      <WorkspaceFooter>
+        {confirmReset ? (
+          <div className="clinical-review-reset">
+            <span>Reset all demo records and handoff entries?</span>
+            <button type="button" onClick={onResetDemo}>Confirm reset</button>
+            <button type="button" onClick={() => setConfirmReset(false)}>Cancel</button>
+          </div>
+        ) : (
+          <Button variant="quiet" onClick={() => setConfirmReset(true)}>Reset demo</Button>
+        )}
+      </WorkspaceFooter>
+      <div className="sr-only" role="status">{announcement}</div>
+      <dialog className="clinical-review-dialog cb-motion-dialog" ref={dialogRef} aria-labelledby="clinical-review-dialog-title"
+        onClose={handleDialogClose}>
+        {selectedConcern && renderConcernDetail(selectedConcern)}
+      </dialog>
+      {detailCodeConfig && detailTierMeta && (
+        <dialog className="clinical-review-criteria" ref={criteriaRef} aria-label="Stop & Watch clinical criteria"
+          onClose={() => setDetailCodeId(null)}>
+          <StopAndWatchDetailModal config={detailCodeConfig} tierMeta={detailTierMeta}
+            onClose={() => criteriaRef.current?.close()} />
+        </dialog>
+      )}
+    </div>
   );
 };

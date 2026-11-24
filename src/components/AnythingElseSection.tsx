@@ -16,7 +16,7 @@ export const AnythingElseSection: React.FC<AnythingElseSectionProps> = ({
   const trimmed = value.trim();
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3">
+    <div className="cb-panel px-4 py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1 text-xs leading-relaxed">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
@@ -40,7 +40,7 @@ export const AnythingElseSection: React.FC<AnythingElseSectionProps> = ({
           <button
             type="button"
             onClick={() => setIsEditing((prev) => !prev)}
-            className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-900 px-2 py-0.5 rounded-md hover:bg-slate-100 transition-colors cursor-pointer shrink-0 active:scale-[0.98]"
+            className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-900 px-2 py-0.5 rounded-md hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
           >
             <span>{isEditing ? 'Done' : trimmed ? 'Edit' : 'Add'}</span>
             {isEditing ? (
@@ -55,6 +55,7 @@ export const AnythingElseSection: React.FC<AnythingElseSectionProps> = ({
       {isEditing && (
         <div className="mt-2.5">
           <textarea
+            aria-label="Unit notes"
             value={value}
             disabled={isLocked}
             onChange={(e) => onChange(e.target.value)}

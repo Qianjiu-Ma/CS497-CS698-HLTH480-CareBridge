@@ -1,538 +1,433 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { HandoffRow, ShiftHeader } from '../types/handoff';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  CheckSquare,
-  Square,
-  AlertTriangle,
-  Layers,
-  CheckCircle2,
-  ListTodo,
-  OctagonAlert,
-  Info,
-  Loader2,
+  AlertCircle, Bandage, BatteryLow, Check, ChevronRight, Clock,
+  Droplet, Loader2, PersonStanding, Users, X,
 } from 'lucide-react';
-import {
-  computeRowSeverity,
-  TIER_METADATA,
-} from '../data/stopAndWatchCodes';
-import { StopAndWatchIconBadge } from './StopAndWatchIconBadge';
+import { AlertThresholds, HandoffRow, NurseEscalation, ShiftHeader } from '../types/handoff';
+import { getCodeConfig, TIER_METADATA } from '../data/stopAndWatchCodes';
+import { StopAndWatchDetailModal, StopAndWatchIconBadge } from './StopAndWatchIconBadge';
+import { buildIncomingResidents, buildIncomingTasks, IncomingResident, IncomingTask } from '../utils/incomingShift';
 import { getInstantLtcTranslation, translateBidirectional } from '../utils/translator';
 import { InterfaceLanguage } from '../utils/uiTranslations';
+import './IncomingShiftView.css';
+import { Button, PageHeader, StatusToast, WorkspaceFooter } from './WorkspaceUi';
 
 interface IncomingShiftViewProps {
   header: ShiftHeader;
   rows: HandoffRow[];
   anythingElse: string;
-  customCodeTiers?: Record<string, 1 | 2 | 3>;
+  thresholds: AlertThresholds;
+  escalations: NurseEscalation[];
+  noteCompletions: Record<string, string>;
+  isLocked: boolean;
+  onSetTaskDone: (task: IncomingTask, done: boolean) => void;
+  onResetTaskProgress: () => void;
   interfaceLanguage?: InterfaceLanguage;
 }
 
-interface ChecklistItem {
-  id: string;
-  room: string;
-  residentName: string;
-  task: string;
-  completed: boolean;
-  completedAt?: string;
-}
+type Details =
+  | { kind: 'residents' | 'unit' | 'reset' }
+  | { kind: 'resident'; room: string }
+  | { kind: 'task'; id: string };
+
+const equipmentNote = 'Lift battery in the tub room is low; spare is charging at the nursing station.';
 
 export const IncomingShiftView: React.FC<IncomingShiftViewProps> = ({
-  header,
-  rows,
-  anythingElse,
-  customCodeTiers,
-  interfaceLanguage = 'en',
+  header, rows, anythingElse, thresholds, escalations, noteCompletions,
+  isLocked, onSetTaskDone, onResetTaskProgress, interfaceLanguage = 'en',
 }) => {
-  const viewLanguage = interfaceLanguage;
-  const [showOriginalEn, setShowOriginalEn] = useState<boolean>(false);
-  const [briefingTranslations, setBriefingTranslations] = useState<Record<string, string>>({});
-  const [isTranslatingBriefing, setIsTranslatingBriefing] = useState<boolean>(false);
-  const briefingCacheRef = useRef<Map<string, string>>(new Map());
+  const [showOriginalEn, setShowOriginalEn] = useState(false);
+  const [translations, setTranslations] = useState<Record<string, string>>({});
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
+  const [details, setDetails] = useState<Details | null>(null);
+  const [codeId, setCodeId] = useState<string | null>(null);
+  const [recent, setRecent] = useState<{ id: string; done: boolean } | null>(null);
+  const [announcement, setAnnouncement] = useState('');
+  const translationsCache = useRef(new Map<string, string>());
+  const dialog = useRef<HTMLDialogElement>(null);
+  const criteriaDialog = useRef<HTMLDialogElement>(null);
+  const closeButton = useRef<HTMLButtonElement>(null);
+  const opener = useRef<HTMLElement | null>(null);
+  const completedButton = useRef<HTMLButtonElement>(null);
+  const workspace = useRef<HTMLDivElement>(null);
 
-  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  const tasks = useMemo(() => buildIncomingTasks(rows, noteCompletions), [rows, noteCompletions]);
+  const residents = useMemo(() => buildIncomingResidents(rows, escalations, thresholds),
+    [rows, escalations, thresholds]);
+  const attention = residents.filter((resident) => resident.rank > 0).sort((a, b) => b.rank - a.rank);
+  const roster = [...residents].sort((a, b) => a.row.room.localeCompare(b.row.room, undefined, { numeric: true }));
+  const completed = tasks.filter((task) => task.done);
+  const remaining = tasks.filter((task) => !task.done);
+  const unitNote = anythingElse?.trim();
+  const equipment = unitNote === equipmentNote;
+  const unitTitle = equipment ? 'Low lift battery in tub room' : unitNote;
+  const equipmentDetail = 'Spare charging at nursing station';
 
-  // Sync actionable checklist reactively whenever rows update
+  // Serialize only translatable text so changing a checkbox does not restart translation.
+  const briefingTexts = JSON.stringify([...new Set([
+    unitNote, equipment ? unitTitle : '', equipment ? equipmentDetail : '',
+    ...tasks.flatMap((task) => [task.title, task.recorded, task.schedule]),
+    ...residents.flatMap(({ row, title, summary, finding, observation, episode }) => [
+      row.done?.value, row.notDoneNextShift?.value, title, summary, finding, observation, episode?.nurseComment,
+      episode?.resolutionNote,
+    ]),
+  ].filter((value): value is string => !!value && value !== '—'))]);
+
   useEffect(() => {
-    setChecklist((prev) => {
-      const prevMap = new Map(prev.map((item) => [item.id, item]));
-      const items: ChecklistItem[] = [];
-      rows.forEach((r) => {
-        const reqs = r.careRequirements || [];
-        const notDone = r.notDoneNextShift?.value;
-        const hasNote = Boolean(notDone && notDone !== '—' && notDone.trim().length > 0);
-
-        if (hasNote) {
-          const alreadyInReqs = reqs.some(
-            (req) => req.action_item.trim().toLowerCase() === notDone!.trim().toLowerCase()
-          );
-          if (!alreadyInReqs) {
-            const id = `task-${r.room}`;
-            const existing = prevMap.get(id);
-            const sameTask = existing && existing.task === notDone;
-            items.push({
-              id,
-              room: r.room,
-              residentName: r.residentName,
-              task: notDone!,
-              completed: sameTask ? existing.completed : false,
-              completedAt: sameTask ? existing.completedAt : undefined,
-            });
-          }
-        }
-
-        reqs.forEach((req) => {
-          const id = `req-${r.room}-${req.id}`;
-          const existing = prevMap.get(id);
-          const taskLabel = `${req.category}: ${req.action_item}`;
-          const isCompleted =
-            req.completed !== undefined
-              ? Boolean(req.completed)
-              : existing && existing.task === taskLabel
-              ? existing.completed
-              : false;
-          items.push({
-            id,
-            room: r.room,
-            residentName: r.residentName,
-            task: taskLabel,
-            completed: isCompleted,
-            completedAt: isCompleted ? existing?.completedAt || 'Logged' : undefined,
-          });
-        });
-      });
-      return items;
-    });
-  }, [rows]);
-
-  // Translate briefing items dynamically via Cloud Translation v3 when non-English is selected
-  useEffect(() => {
-    if (viewLanguage === 'en') {
-      setIsTranslatingBriefing(false);
+    if (interfaceLanguage === 'en') {
+      setIsTranslating(false);
       setShowOriginalEn(false);
       return;
     }
-
     let cancelled = false;
-    const uniqueTexts = new Set<string>();
-    if (anythingElse?.trim()) uniqueTexts.add(anythingElse.trim());
-    checklist.forEach((item) => {
-      if (item.task?.trim()) uniqueTexts.add(item.task.trim());
-    });
-    rows.forEach((r) => {
-      [
-        r.done?.value,
-        r.notDoneNextShift?.value,
-        r.changeNote?.value,
-        r.mltcDetails.qualitativeObservations?.value,
-      ].forEach((val) => {
-        const clean = (val || '').trim();
-        if (clean && clean !== '—') uniqueTexts.add(clean);
-      });
-    });
-
-    const pendingTexts = Array.from(uniqueTexts).filter(
-      (txt) => !briefingCacheRef.current.has(`${viewLanguage}::${txt}`)
-    );
-
-    if (pendingTexts.length === 0) {
-      setIsTranslatingBriefing(false);
+    const texts: string[] = JSON.parse(briefingTexts);
+    const missing = texts.filter((text) => !translationsCache.current.has(interfaceLanguage + '::' + text));
+    if (!missing.length) {
+      setIsTranslating(false);
       return;
     }
-
     const timer = setTimeout(async () => {
-      setIsTranslatingBriefing(true);
-      const updates: Record<string, string> = {};
-
-      try {
-        await Promise.all(
-          pendingTexts.map(async (txt) => {
-            const res = await translateBidirectional(txt, 'en', viewLanguage);
-            const translated =
-              res?.translatedText?.trim() || getInstantLtcTranslation(txt, viewLanguage, 'en');
-            const key = `${viewLanguage}::${txt}`;
-            briefingCacheRef.current.set(key, translated);
-            updates[key] = translated;
-          })
-        );
-        if (!cancelled) {
-          setBriefingTranslations((prev) => ({ ...prev, ...updates }));
-        }
-      } catch {
-        // fallback already handled
-      } finally {
-        if (!cancelled) setIsTranslatingBriefing(false);
+      setIsTranslating(true);
+      const translated = await Promise.allSettled(missing.map(async (text) => {
+        const result = await translateBidirectional(text, 'en', interfaceLanguage);
+        return [interfaceLanguage + '::' + text,
+          result?.translatedText?.trim() || getInstantLtcTranslation(text, interfaceLanguage, 'en')] as const;
+      }));
+      if (cancelled) return;
+      const collected: Record<string, string> = {};
+      for (const result of translated) {
+        if (result.status !== 'fulfilled') continue;
+        const [key, value] = result.value;
+        translationsCache.current.set(key, value);
+        collected[key] = value;
       }
+      setTranslations((previous) => ({ ...previous, ...collected }));
+      setIsTranslating(false);
     }, 200);
-
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [viewLanguage, rows, checklist, anythingElse]);
+  }, [interfaceLanguage, briefingTexts]);
 
-  const tBrief = (text: string): string => {
-    if (!text || viewLanguage === 'en') return text;
-    const key = `${viewLanguage}::${text.trim()}`;
-    return briefingTranslations[key] || getInstantLtcTranslation(text, viewLanguage, 'en');
+  useEffect(() => {
+    if (!recent) return;
+    const timer = setTimeout(() => setRecent(null), 6500);
+    return () => clearTimeout(timer);
+  }, [recent]);
+
+  const detailTask = details?.kind === 'task' ? tasks.find((item) => item.id === details.id) : undefined;
+  const detailResident = details?.kind === 'resident' ? residents.find((item) => item.row.room === details.room) : undefined;
+  const hasDetails = Boolean(details && (details.kind !== 'task' || detailTask) &&
+    (details.kind !== 'resident' || detailResident));
+
+  useEffect(() => {
+    const element = dialog.current;
+    if (!hasDetails) {
+      if (element?.open) element.close();
+      return;
+    }
+    if (!element?.open) element?.showModal();
+    closeButton.current?.focus();
+  }, [details, hasDetails]);
+
+  const criterion = codeId ? getCodeConfig(codeId, thresholds.customCodeTiers) : undefined;
+  useEffect(() => {
+    if (criterion && !criteriaDialog.current?.open) criteriaDialog.current?.showModal();
+  }, [criterion]);
+
+  const t = (text: string) => {
+    if (!text || interfaceLanguage === 'en') return text;
+    return translations[interfaceLanguage + '::' + text] || getInstantLtcTranslation(text, interfaceLanguage, 'en');
   };
 
-  const toggleTask = (id: string) => {
-    setChecklist((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              completed: !item.completed,
-              completedAt: !item.completed ? new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined,
-            }
-          : item
-      )
+  const textWithOriginal = (text: string) => {
+    const translated = t(text);
+    return <>{translated}{showOriginalEn && translated !== text && <small className="small">EN: {text}</small>}</>;
+  };
+
+  const showDetails = (next: Details, trigger?: HTMLElement) => {
+    if (trigger && !dialog.current?.open) opener.current = trigger;
+    setDetails(next);
+  };
+
+  const focusNextTask = () => {
+    const pendingButton = workspace.current?.querySelector<HTMLButtonElement>('.taskgroup .tick:not(:disabled)');
+    (pendingButton || completedButton.current)?.focus();
+  };
+
+  const returnFocus = () => {
+    if (opener.current?.isConnected) opener.current.focus();
+    else focusNextTask();
+  };
+
+  const isMutable = (task: IncomingTask) => !task.pending && !(isLocked && task.requirementId);
+
+  const changeTask = (task: IncomingTask, done: boolean, undo = false) => {
+    if (!isMutable(task)) return;
+    onSetTaskDone(task, done);
+    setRecent(undo ? null : { id: task.id, done });
+    setAnnouncement(task.title + (done ? ' completed.' : ' reopened.') + ' Clinical concerns unchanged.');
+  };
+
+  const renderTask = (task: IncomingTask) => (
+    <div className={'task' + (task.done ? ' done' : '')} key={task.id} data-room={task.room}>
+      <button type="button" className="tick" aria-pressed={task.done} disabled={!isMutable(task)}
+        aria-label={(task.done ? 'Undo completion: ' : 'Complete ') + t(task.title) + ', room ' + task.room}
+        onClick={() => {
+          changeTask(task, !task.done);
+          requestAnimationFrame(focusNextTask);
+        }}>
+        <span className="check">{task.done && <Check />}</span>
+      </button>
+      <button type="button" className="details" aria-haspopup="dialog"
+        onClick={(event) => showDetails({ kind: 'task', id: task.id }, event.currentTarget)}>
+        <span className="copy">
+          <span className="tasktitle">{textWithOriginal(task.title)}</span>
+          <span className="small">{task.residentName} · Room {task.room}</span>
+        </span>
+        <span className="time">{task.clock ? task.schedule : t(task.schedule)}</span>
+        <ChevronRight className="chev" />
+      </button>
+    </div>
+  );
+
+  const renderConcern = (resident: IncomingResident) => {
+    const { row, codes, status, title, summary, label, notified, unverified } = resident;
+    const Icon = codes.includes('C') && title === 'Heel redness does not blanch' ? Bandage
+      : status.isBmOverdue ? Clock : codes.includes('C') ? Bandage : codes.includes('H') ? PersonStanding
+      : status.isLowFluid && !codes.length ? Droplet : AlertCircle;
+    return (
+      <button key={row.room} type="button" className="concern" data-room={row.room} aria-haspopup="dialog"
+        onClick={(event) => showDetails({ kind: 'resident', room: row.room }, event.currentTarget)}>
+        <span className={'symbol' + (status.isUrgent ? ' red' : '')}>
+          <Icon className={Icon === Bandage ? 'skin-icon' : undefined} />
+        </span>
+        <span className="copy">
+          <span className="identity"><strong>{row.residentName}</strong> Room {row.room}</span>
+          <span className="finding">{textWithOriginal(title)}</span>
+          {summary && <span className="small">{textWithOriginal(summary)}</span>}
+          <span className={'severity' + (status.isUrgent ? ' red' : '')}>{label} · {notified}</span>
+          {unverified && <span className="small">Unverified handoff entries</span>}
+        </span>
+        <ChevronRight className="chev" />
+      </button>
     );
   };
 
-  // Compute severity and sort: Tier 3 > Tier 2 > Tier 1 > Pending next shift tasks > Standard per care plan
-  const evaluatedRows = rows.map((r) => {
-    const codes = r.changeCodes?.value || [];
-    const severity = computeRowSeverity(codes, r.prevShiftTier, customCodeTiers);
-    const hasNotDoneNote = Boolean(r.notDoneNextShift?.value && r.notDoneNextShift.value !== '—');
-    const hasReqTasks = (r.careRequirements || []).length > 0;
-    const hasNextShift = hasNotDoneNote || hasReqTasks;
-    return {
-      row: r,
-      codes,
-      severity,
-      hasNextShift,
-    };
-  });
+  const renderResident = ({ row, codes, status, label, notified, unverified, finding, observation, episode, rank }: IncomingResident) => {
+    const nextShift = row.notDoneNextShift?.value?.trim();
+    const residentTasks = tasks.filter((task) => task.room === row.room);
+    const labels = status.tier ? TIER_METADATA[status.tier].label : label;
+    return (
+      <>
+        {rank > 0 && <section className="block">
+          <h3>Clinical concerns</h3>
+          <p>{labels} · {notified}{notified === 'RN notified' && !row.nurseInitials?.isPendingConfirmation && row.nurseInitials?.value
+            ? ' (' + row.nurseInitials.value + ')' : ''}</p>
+          {unverified && <p className="severity red">Confirm unverified handoff entries with the original record before acting.</p>}
+          {finding && <p>{textWithOriginal(finding)}</p>}
+          {status.isBmOverdue && <p>{textWithOriginal(row.mltcDetails?.bowelMovement?.value || 'Bowel movement overdue')}</p>}
+          {status.isLowFluid && <p>{row.mltcDetails?.fluidIntakeMl?.value} mL recorded</p>}
+          {!!codes.length && <div className="flags">
+            {codes.map((code) => <StopAndWatchIconBadge key={code} codeId={code} size="sm"
+              onClick={() => setCodeId(code)} language={interfaceLanguage} customTiers={thresholds.customCodeTiers} />)}
+          </div>}
+          {status.tier && <p className="small">Prototype severity tiers are separate from the official INTERACT tool.</p>}
+        </section>}
+        {observation && <section className="block"><h3>Observations</h3><p>{textWithOriginal(observation)}</p></section>}
+        {episode?.nurseComment && <section className="block">
+          <h3>Last recorded nurse assessment</h3>
+          <p>{textWithOriginal(episode.nurseComment)}</p>
+          <p className="sub">{[episode.acknowledgedBy, episode.acknowledgedAt].filter(Boolean).join(' · ')}</p>
+        </section>}
+        {episode?.resolutionStatus === 'resolved' && <section className="block">
+          <h3>Recorded nurse resolution</h3>
+          {episode.resolutionNote && <p>{textWithOriginal(episode.resolutionNote)}</p>}
+          <p className="sub">{[episode.resolvedBy, episode.resolvedAt].filter(Boolean).join(' · ')}</p>
+        </section>}
+        <section className="block"><h3>Completed care</h3><p>{textWithOriginal(row.done?.value || '—')}</p></section>
+        {((nextShift && nextShift !== '—') || residentTasks.length > 0) && <section className="block">
+          <h3>Next shift</h3>
+          {nextShift && nextShift !== '—' && <p>{textWithOriginal(nextShift)}</p>}
+          {residentTasks.map((task) => <button key={task.id} type="button" className="resident-row"
+            onClick={() => showDetails({ kind: 'task', id: task.id })}>
+            <span className="copy">{t(task.title)}<small className="small">
+              {task.done ? 'Completed' : task.pending ? 'Unverified' : 'Pending'}
+            </small></span><ChevronRight className="chev" />
+          </button>)}
+        </section>}
+        <button className="link" type="button" onClick={() => showDetails({ kind: 'residents' })}>
+          <Users /> All residents
+        </button>
+      </>
+    );
+  };
 
-  const sortedRows = [...evaluatedRows].sort((a, b) => {
-    const tierA = a.severity?.effectiveTier ?? 0;
-    const tierB = b.severity?.effectiveTier ?? 0;
-    if (tierA !== tierB) {
-      return tierB - tierA; // Higher tier first
+  const renderTaskDetail = (task: IncomingTask) => (
+    <>
+      <section className="block">
+        <h3>Recorded handoff</h3>
+        <p>{textWithOriginal(task.recorded)}</p>
+        {task.sourceQuote && task.sourceQuote !== task.recorded && <blockquote className="sub">{task.sourceQuote}</blockquote>}
+      </section>
+      {task.isVisit && <section className="block"><h3>Context</h3>
+        <p>The recorded time is the visit. Follow facility policy and your role when sharing information.</p>
+      </section>}
+      {task.pending && <p className="severity red">Verify this task in the Handoff Sheet before marking it complete.</p>}
+      {isLocked && task.requirementId && <p className="small">This task belongs to a submitted handoff.</p>}
+      {task.done && task.completedAt && <p className="small">Completed at {task.completedAt}</p>}
+      <button className="link" type="button" onClick={() => showDetails({ kind: 'resident', room: task.room })}>
+        Resident details <ChevronRight />
+      </button>
+      {isMutable(task) && <div className="actions">
+        <Button variant="primary" onClick={() => {
+          changeTask(task, !task.done);
+          dialog.current?.close();
+        }}>{task.done ? 'Undo completion' : 'Mark complete'}</Button>
+      </div>}
+    </>
+  );
+
+  const renderDialogBody = () => {
+    let title = '';
+    let subtitle = '';
+    let body: React.ReactNode;
+    if (details?.kind === 'residents') {
+      title = 'All residents';
+      subtitle = roster.length + (roster.length === 1 ? ' resident' : ' residents');
+      body = <div className="cb-panel panel">{roster.map((resident) => (
+        <button className="resident-row" key={resident.row.room} type="button"
+          onClick={() => showDetails({ kind: 'resident', room: resident.row.room })}>
+          <span className="copy"><strong>{resident.row.room} · {resident.row.residentName}</strong>
+            <span className="small">{resident.rank ? resident.label : 'Per care plan'}</span>
+          </span><ChevronRight className="chev" />
+        </button>
+      ))}</div>;
+    } else if (details?.kind === 'unit') {
+      title = 'Unit note';
+      subtitle = equipment ? 'Equipment' : '';
+      body = <section className="block"><h3>Original handoff</h3>
+        <p>{textWithOriginal(unitNote)}</p>
+        {interfaceLanguage !== 'en' && !showOriginalEn && t(unitNote) !== unitNote && <p className="sub">EN: {unitNote}</p>}
+      </section>;
+    } else if (details?.kind === 'reset') {
+      title = 'Reset demo?';
+      subtitle = 'Incoming free-text task progress only';
+      body = <div className="actions"><Button variant="primary" onClick={() => {
+        onResetTaskProgress();
+        setShowCompleted(false);
+        setRecent(null);
+        setAnnouncement('Incoming task progress reset.');
+        dialog.current?.close();
+      }}>Reset tasks</Button></div>;
+    } else if (detailTask) {
+      title = t(detailTask.title);
+      subtitle = detailTask.residentName + ' · Room ' + detailTask.room;
+      body = renderTaskDetail(detailTask);
+    } else if (detailResident) {
+      title = detailResident.row.residentName;
+      subtitle = 'Room ' + detailResident.row.room;
+      body = renderResident(detailResident);
     }
-    // If same tier, check next shift tasks
-    if (a.hasNextShift && !b.hasNextShift) return -1;
-    if (!a.hasNextShift && b.hasNextShift) return 1;
-    return a.row.room.localeCompare(b.row.room);
-  });
+    return <div className="dialogbody">
+      <div className="dhead">
+        <div><h2 id="incoming-dialog-title">{title}</h2><p className="sub">{subtitle}</p></div>
+        <button ref={closeButton} type="button" className="close" aria-label="Close"
+          onClick={() => dialog.current?.close()}><X /></button>
+      </div>
+      {body}
+    </div>;
+  };
 
-  const completedCount = checklist.filter((t) => t.completed).length;
+  const recentTask = recent && tasks.find((task) => task.id === recent.id && task.done === recent.done);
 
   return (
-    <div className="space-y-6">
-      {/* Header card for incoming shift staff */}
-      <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <ListTodo className="w-5 h-5 text-teal-700" />
-            <h1 className="text-base font-bold text-slate-900 tracking-tight">
-              Incoming Shift Priority Briefing & Task Checklist
-            </h1>
-          </div>
-          <p className="text-xs text-slate-500 mt-1">
-            Prepared for <strong>{header.incomingPsw}</strong> ({header.shift}) · Handed over by {header.outgoingPsw}. Flagged residents and pending tasks are prioritized by clinical severity (Tier 3 Now &gt; Tier 2 Shift &gt; Tier 1 Monitor).
-          </p>
-        </div>
+    <div className="incoming-workspace" ref={workspace}>
+      <PageHeader title="My shift" subtitle={<span title={header.shift}>
+          {header.incomingPsw} · Handoff from {header.outgoingPsw.replace(/,\s*PSW$/i, '')}
+        </span>} actions={<>
+          {interfaceLanguage !== 'en' && (
+            <button className="link" type="button" aria-pressed={showOriginalEn}
+              onClick={() => setShowOriginalEn(!showOriginalEn)}>
+              {isTranslating && <Loader2 className="cb-pending" />}
+              {showOriginalEn ? 'Hide EN' : 'Show EN'}
+            </button>
+          )}
+          <Button aria-haspopup="dialog"
+            onClick={(event) => showDetails({ kind: 'residents' }, event.currentTarget)}>
+            <Users /> All residents
+          </Button>
+        </>} />
+      {unitNote && <button className="unit" type="button" aria-haspopup="dialog"
+        onClick={(event) => showDetails({ kind: 'unit' }, event.currentTarget)}>
+        <BatteryLow />
+        <span>{equipment ? <><strong>{t(unitTitle)}</strong> · {t(equipmentDetail)}</> : textWithOriginal(unitTitle)}
+          {equipment && showOriginalEn && t(unitTitle) !== unitTitle && <small className="small">EN: {unitNote}</small>}
+        </span>
+        <ChevronRight className="chev" />
+      </button>}
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          {viewLanguage !== 'en' && (
-            <div className="flex items-center gap-2">
-              {isTranslatingBriefing && (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-700 shrink-0" />
-              )}
-              <button
-                type="button"
-                onClick={() => setShowOriginalEn((prev) => !prev)}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer active:scale-[0.98] ${
-                  showOriginalEn
-                    ? 'bg-teal-50 border-teal-300 text-teal-800'
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                {showOriginalEn ? 'Hide EN' : 'Show EN'}
-              </button>
+      <div className="layout">
+        <section className="attention" aria-labelledby="incoming-attention">
+          <div className="sectionhead"><h2 id="incoming-attention">Needs attention <span className="count">{attention.length}</span></h2></div>
+          <div className="cb-panel panel">
+            {attention.length ? attention.map(renderConcern) : <p className="empty">No current clinical concerns.</p>}
+          </div>
+        </section>
+        <section className="tasks" aria-labelledby="incoming-tasks">
+          <div className="sectionhead">
+            <h2 id="incoming-tasks">My tasks</h2>
+            <div className="progress">
+              {completed.length} of {tasks.length} done
+              <span className="track" aria-hidden="true"><span className="cb-progress-fill" style={{ transform: `scaleX(${tasks.length ? completed.length / tasks.length : 0})` }} /></span>
             </div>
-          )}
-
-          {checklist.length > 0 && (
-            <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-lg px-4 py-1.5">
-              <div className="text-xs">
-                <span className="font-bold text-slate-800">Next Shift Tasks:</span>{' '}
-                <span className="font-mono text-teal-800 font-semibold tabular-nums">
-                  {completedCount} / {checklist.length} completed
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Interactive Actionable Checklist for Incoming Shift */}
-      {checklist.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-xs space-y-3">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-              <CheckSquare className="w-4 h-4 text-teal-700" />
-              <span>Outstanding Care & Follow-Up Checklist</span>
-            </h2>
-            <span className="text-[11px] text-slate-500">
-              Tick off tasks as you perform them during your shift
-            </span>
           </div>
-
-          <div className="space-y-2">
-            {checklist.map((item) => {
-              const displayTask =
-                viewLanguage === 'en'
-                  ? item.task
-                  : tBrief(item.task);
-
-              return (
-                <div
-                  key={item.id}
-                  onClick={() => toggleTask(item.id)}
-                  className={`flex items-start gap-3 p-3 rounded-lg border transition-all cursor-pointer text-xs ${
-                    item.completed
-                      ? 'bg-emerald-50/60 border-emerald-200 text-emerald-950'
-                      : 'bg-slate-50 border-slate-200 hover:bg-slate-100/80 text-slate-800'
-                  }`}
-                >
-                  <div className="mt-0.5 shrink-0 text-teal-700">
-                    {item.completed ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    ) : (
-                      <Square className="w-4 h-4 text-slate-400" />
-                    )}
-                  </div>
-
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-xs text-slate-900">
-                        Room {item.room} ({item.residentName})
-                      </span>
-                      {item.completed && (
-                        <span className="text-[11px] font-mono text-emerald-700 font-medium">
-                          ✓ Completed at {item.completedAt}
-                        </span>
-                      )}
-                    </div>
-                    <div
-                      className={`mt-0.5 leading-snug ${
-                        item.completed ? 'line-through text-slate-500' : 'text-slate-800 font-medium'
-                      }`}
-                    >
-                      {displayTask}
-                    </div>
-                    {viewLanguage !== 'en' && showOriginalEn && displayTask !== item.task && (
-                      <div className="text-[10px] text-slate-400 font-normal italic mt-0.5">
-                        EN: {item.task}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+          <div className="cb-panel panel">
+            {remaining.length ? [
+              { title: 'Timed', items: remaining.filter((task) => task.clock) },
+              { title: 'Flexible', items: remaining.filter((task) => !task.clock) },
+            ].map(({ title, items }) => !!items.length && <section className="taskgroup" aria-label={title} key={title}>
+              <h3 className="groupname">{title}</h3>{items.map(renderTask)}
+            </section>) : <p className="empty">{tasks.length ? 'All listed handoff tasks complete.' : 'No handoff tasks recorded.'}</p>}
           </div>
-        </div>
-      )}
-
-      {/* Equipment and Village Notes */}
-      {anythingElse && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-xs space-y-1">
-          <div className="font-bold text-amber-950 flex items-center gap-1.5">
-            <Layers className="w-4 h-4 text-amber-700" />
-            <span>Unit / Equipment Alert for Upcoming Shift:</span>
+          <div className="completed">
+            <button ref={completedButton} className="link cb-completed-disclosure" type="button" aria-expanded={showCompleted}
+              onClick={() => setShowCompleted(!showCompleted)}>
+              <Check /> Completed ({completed.length}) <ChevronRight className="cb-disclosure-icon" aria-hidden="true" />
+            </button>
+            {showCompleted && <div className="cb-panel panel">
+              {completed.length ? completed.map(renderTask) : <p className="empty">No completed tasks yet.</p>}
+            </div>}
           </div>
-          <p className="text-amber-900 pl-5 font-medium">
-            {viewLanguage === 'en'
-              ? anythingElse
-              : tBrief(anythingElse)}
-          </p>
-          {viewLanguage !== 'en' && showOriginalEn && tBrief(anythingElse) !== anythingElse && (
-            <p className="text-[11px] text-amber-700/80 pl-5 italic">
-              EN: {anythingElse}
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* Read-Only Priority Sorted Resident Summary */}
-      <div className="space-y-3">
-        <h2 className="text-sm font-bold text-slate-900">
-          Resident Status Summary (Prioritized by clinical severity)
-        </h2>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-          {sortedRows.map(({ row: r, codes, severity, hasNextShift }) => {
-            const hasCodes = codes.length > 0;
-            const effectiveTier = severity?.effectiveTier;
-            const tierMeta = effectiveTier ? TIER_METADATA[effectiveTier] : null;
-
-            const originalDone = r.done?.value || '—';
-            const displayDone =
-              viewLanguage === 'en'
-                ? originalDone
-                : tBrief(originalDone);
-
-            const originalNextShift = r.notDoneNextShift?.value || '';
-            const displayNextShift =
-              viewLanguage === 'en'
-                ? originalNextShift
-                : tBrief(originalNextShift);
-
-            const originalNote = r.changeNote?.value || '';
-            const displayNote =
-              viewLanguage === 'en'
-                ? originalNote
-                : tBrief(originalNote);
-
-            const originalObs = r.mltcDetails.qualitativeObservations?.value || '';
-            const displayObs =
-              viewLanguage === 'en'
-                ? originalObs
-                : tBrief(originalObs);
-
-            const borderClass =
-              effectiveTier === 3
-                ? 'border-purple-400 ring-1 ring-purple-300'
-                : effectiveTier === 2
-                ? 'border-amber-400 ring-1 ring-amber-200'
-                : effectiveTier === 1
-                ? 'border-sky-300'
-                : hasNextShift
-                ? 'border-teal-300'
-                : 'border-slate-200 opacity-90';
-
-            return (
-              <div
-                key={r.room}
-                className={`bg-white border rounded-lg p-4 shadow-xs text-xs space-y-2.5 transition-all ${borderClass}`}
-              >
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                  <div className="font-bold text-slate-900 text-sm">
-                    Room {r.room} · {r.residentName}
-                  </div>
-                  {tierMeta ? (
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded border flex items-center gap-1 ${tierMeta.badgeBg} ${tierMeta.badgeColor} ${tierMeta.badgeBorder}`}
-                    >
-                      {tierMeta.tier === 3 ? (
-                        <OctagonAlert className="w-3 h-3 text-purple-700" />
-                      ) : tierMeta.tier === 2 ? (
-                        <AlertTriangle className="w-3 h-3 text-amber-700" />
-                      ) : (
-                        <Info className="w-3 h-3 text-sky-700" />
-                      )}
-                      <span>{tierMeta.label}</span>
-                    </span>
-                  ) : hasNextShift ? (
-                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200">
-                      Follow-up Due
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-slate-500 font-medium">Per Care Plan</span>
-                  )}
-                </div>
-
-                <div className="space-y-1.5 text-xs">
-                  <div>
-                    <span className="font-semibold text-slate-600">Care Done:</span>{' '}
-                    <span className="text-slate-800">{displayDone}</span>
-                    {viewLanguage !== 'en' && showOriginalEn && displayDone !== originalDone && (
-                      <span className="text-[10px] text-slate-400 italic block">
-                        EN: {originalDone}
-                      </span>
-                    )}
-                  </div>
-
-                  {(hasNextShift || (r.careRequirements || []).length > 0) && (
-                    <div className="p-2 bg-teal-50/70 border border-teal-200 rounded text-teal-950 font-medium space-y-1">
-                      {originalNextShift && originalNextShift !== '—' && (
-                        <div>
-                          <span className="font-bold">Next Shift Action:</span> {displayNextShift}
-                          {viewLanguage !== 'en' && showOriginalEn && displayNextShift !== originalNextShift && (
-                            <div className="text-[10px] text-teal-700/80 italic mt-0.5 font-normal">
-                              EN: {originalNextShift}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      {(r.careRequirements || []).length > 0 && (
-                        <ul className="space-y-0.5 text-[11px] font-normal">
-                          {r.careRequirements!.map((req) => (
-                            <li key={req.id} className={req.completed ? 'line-through text-teal-700/70' : ''}>
-                              <span className="font-semibold">{req.category}:</span>{' '}
-                              {viewLanguage === 'en' ? req.action_item : tBrief(req.action_item)}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  )}
-
-                  {hasCodes && (
-                    <div className={`p-2 rounded space-y-1 border ${
-                      effectiveTier === 3
-                        ? 'bg-purple-50/70 border-purple-200 text-purple-950'
-                        : effectiveTier === 2
-                        ? 'bg-amber-50/70 border-amber-200 text-amber-950'
-                        : 'bg-sky-50/70 border-sky-200 text-sky-950'
-                    }`}>
-                      <div className="flex flex-wrap gap-1">
-                        {codes.map((c) => (
-                          <StopAndWatchIconBadge
-                            key={c}
-                            codeId={c}
-                            size="sm"
-                            customTiers={customCodeTiers}
-                            language={viewLanguage}
-                          />
-                        ))}
-                      </div>
-                      <div className="text-xs font-normal">{displayNote}</div>
-                      {viewLanguage !== 'en' && showOriginalEn && displayNote !== originalNote && (
-                        <div className="text-[10px] text-slate-500 italic font-normal">
-                          EN: {originalNote}
-                        </div>
-                      )}
-                      {r.toldNurse?.value && (
-                        <div className="text-[10px] text-emerald-800 font-semibold mt-0.5">
-                          ✓ Charge Nurse notified ({r.nurseInitials?.value || 'RN'})
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {originalObs && (
-                    <div className="text-slate-600 text-[11px]">
-                      <span className="font-semibold text-slate-700">Observation:</span>{' '}
-                      {displayObs}
-                      {viewLanguage !== 'en' && showOriginalEn && displayObs !== originalObs && (
-                        <span className="text-[10px] text-slate-400 italic block">
-                          EN: {originalObs}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        </section>
       </div>
-
-      {/* Decision support note */}
-      <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-600 space-y-1">
-        <p className="font-semibold text-slate-700">
-          * All alerts and tiers are decision support only. The charge nurse makes all clinical decisions.
-        </p>
-        <p className="text-[10px] text-slate-500">
-          Severity tiers are a prototype proposal and must be reviewed and approved by Schlegel Villages nursing leadership. They are not part of the official INTERACT tool.
-        </p>
-      </div>
+      <WorkspaceFooter>
+        <Button variant="quiet" aria-haspopup="dialog" onClick={(event) => showDetails({ kind: 'reset' }, event.currentTarget)}>
+          Reset demo
+        </Button>
+      </WorkspaceFooter>
+      <dialog className="cb-motion-dialog" ref={dialog} aria-labelledby="incoming-dialog-title" onClose={() => {
+        setDetails(null);
+        setCodeId(null);
+        returnFocus();
+      }}>
+        {hasDetails && renderDialogBody()}
+      </dialog>
+      {criterion && <dialog ref={criteriaDialog} className="criteria-dialog" aria-label="Stop & Watch criteria"
+        onClose={() => setCodeId(null)}>
+        <StopAndWatchDetailModal config={criterion} tierMeta={TIER_METADATA[criterion.defaultTier]}
+          onClose={() => criteriaDialog.current?.close()} />
+      </dialog>}
+      {recentTask && isMutable(recentTask) && <StatusToast announce={false}>
+        <span>{recent.done ? 'Task completed' : 'Task reopened'}</span>
+        <button type="button" onClick={() => {
+          changeTask(recentTask, !recent.done, true);
+          requestAnimationFrame(focusNextTask);
+        }}>Undo</button>
+      </StatusToast>}
+      <div className="sr-only" role="status">{announcement}</div>
     </div>
   );
 };
-
-

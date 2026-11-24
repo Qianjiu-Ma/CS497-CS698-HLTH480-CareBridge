@@ -1,0 +1,405 @@
+.carebridge-settings button:focus-visible,
+.carebridge-settings a:focus-visible,
+.carebridge-settings input:focus-visible,
+.carebridge-settings select:focus-visible,
+.carebridge-settings summary:focus-visible {
+  outline: 3px solid var(--cb-accent);
+  outline-offset: 3px;
+}
+
+.carebridge-settings svg {
+  width: 21px;
+  height: 21px;
+  flex: none;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.carebridge-settings h2 {
+  font-size: 15px;
+  margin: 0;
+  font-weight: 650;
+}
+
+.carebridge-settings h2.group-label {
+  font-size: 13px;
+  color: var(--cb-muted);
+  font-weight: 650;
+  margin: 23px 0 8px;
+  padding-left: 4px;
+}
+
+.carebridge-settings .group {
+  background: var(--cb-surface);
+  border: 1px solid var(--cb-line);
+  border-radius: var(--cb-radius);
+  overflow: hidden;
+}
+
+.carebridge-settings .setting {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 19px;
+  text-align: left;
+  min-height: 68px;
+}
+
+.carebridge-settings .setting+.setting {
+  border-top: 1px solid var(--cb-line);
+}
+
+.carebridge-settings .setting:hover {
+  background: #f9fbfb;
+}
+
+.carebridge-settings .tile {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--cb-accent-soft);
+  color: var(--cb-accent);
+  flex: none;
+}
+
+.carebridge-settings .tile.neutral {
+  background: var(--cb-neutral-soft);
+  color: #516b80;
+}
+
+.carebridge-settings .tile.amber {
+  background: var(--cb-warning-soft);
+  color: #86551b;
+}
+
+.carebridge-settings .name {
+  font-weight: 600;
+  flex: 1;
+  min-width: 0;
+}
+
+.carebridge-settings .value {
+  color: var(--cb-muted);
+  font-size: 14px;
+  text-align: right;
+}
+
+.carebridge-settings .chev {
+  width: 16px;
+  height: 16px;
+  color: #80919c;
+}
+
+
+.carebridge-settings .back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--cb-accent);
+  padding: 0 0 18px;
+  font-weight: 600;
+}
+
+.carebridge-settings .detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.carebridge-settings .notice {
+  border: 1px solid #e9d6ac;
+  background: #fff9eb;
+  color: #744915;
+  border-radius: 10px;
+  padding: 12px 15px;
+  display: flex;
+  align-items: start;
+  gap: 10px;
+  font-size: 13px;
+  margin: 18px 0;
+}
+
+.carebridge-settings .notice svg {
+  width: 18px;
+  height: 18px;
+}
+
+.carebridge-settings .rule-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  min-height: 55px;
+}
+
+.carebridge-settings .rule-row+.rule-row {
+  border-top: 1px solid var(--cb-line);
+}
+
+.carebridge-settings .rule-row .name {
+  font-weight: 550;
+}
+
+.carebridge-settings .rule-row button.info {
+  color: var(--cb-muted);
+  padding: 8px;
+  min-width: 40px;
+  min-height: 40px;
+  display: grid;
+  place-items: center;
+}
+
+.carebridge-settings .tier {
+  font-size: 13px;
+  white-space: nowrap;
+  color: #4e687b;
+}
+
+.carebridge-settings .tier.t2 {
+  color: #875215;
+}
+
+.carebridge-settings .tier.t3 {
+  color: #a52b42;
+}
+
+.carebridge-settings .tier.t1 {
+  color: #38647c;
+}
+
+.carebridge-settings .rule-row select,
+.carebridge-settings .rule-row input {
+  padding: 8px;
+  border: 1px solid #c9d5db;
+  background: var(--cb-surface);
+  color: var(--cb-ink);
+  border-radius: 7px;
+  max-width: 155px;
+  min-width: 0;
+}
+
+.carebridge-settings .rule-row input {
+  width: 100px;
+}
+
+.carebridge-settings .rule-row .code {
+  font-size: 12px;
+  color: var(--cb-muted);
+  width: 18px;
+}
+
+.carebridge-settings .actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+
+.carebridge-settings .actions-right {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.carebridge-settings .muted {
+  color: var(--cb-muted);
+  font-size: 13px;
+}
+
+.carebridge-settings .detail-text {
+  padding: 16px 19px;
+}
+
+.carebridge-settings .detail-text p {
+  margin: 6px 0 0;
+}
+
+.carebridge-settings .detail-text+.detail-text {
+  border-top: 1px solid var(--cb-line);
+}
+
+.carebridge-settings dialog {
+  border: 1px solid var(--cb-line);
+  border-radius: var(--cb-dialog-radius);
+  max-width: min(520px,calc(100vw - 28px));
+  width: 100%;
+  padding: 25px;
+  color: var(--cb-ink);
+  box-shadow: var(--cb-dialog-shadow);
+  max-height: 85dvh;
+  overflow: auto;
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  background: var(--cb-surface);
+  overscroll-behavior: contain;
+}
+
+.carebridge-settings dialog::backdrop {
+  background: var(--cb-dialog-shade);
+}
+
+.carebridge-settings dialog h2 {
+  font-size: 22px;
+  letter-spacing: -.5px;
+  margin: 0 0 14px;
+}
+
+.carebridge-settings dialog p {
+  margin: 12px 0;
+}
+
+.carebridge-settings dialog .actions {
+  justify-content: flex-end;
+}
+
+.carebridge-settings dialog input[type=range] {
+  width: 100%;
+  accent-color: var(--cb-accent);
+}
+
+.carebridge-settings .diff {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--cb-line);
+}
+
+.carebridge-settings :where(button) {
+  cursor: pointer;
+}
+
+.carebridge-settings .group-note {
+  margin: 8px 4px 0;
+}
+
+.carebridge-settings .information {
+  margin-top: 24px;
+}
+
+.carebridge-settings .stored {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.carebridge-settings .rule-row input[aria-invalid='true'] {
+  border-color: #a52b42;
+}
+
+.carebridge-settings .pause-value {
+  display: block;
+  text-align: center;
+  font-size: 32px;
+  font-weight: 650;
+}
+
+.carebridge-settings .pause-ends {
+  display: flex;
+  justify-content: space-between;
+}
+
+.carebridge-settings .setting:focus-visible {
+  outline-offset: -4px;
+}
+
+.carebridge-settings .detail-head {
+  min-height: 44px;
+}
+
+@media (max-width: 820px) {
+}
+
+@media (max-width: 460px) {
+  .carebridge-settings .setting {
+    padding: 14px;
+    gap: 10px;
+  }
+
+  .carebridge-settings .tile {
+    width: 34px;
+    height: 34px;
+  }
+
+  .carebridge-settings .value {
+    font-size: 12px;
+    max-width: 105px;
+  }
+
+  .carebridge-settings .name {
+    font-size: 14px;
+  }
+
+  .carebridge-settings .rule-row {
+    gap: 6px;
+    padding: 10px;
+  }
+
+  .carebridge-settings .rule-row .name {
+    font-size: 13px;
+  }
+
+  .carebridge-settings .rule-row select {
+    max-width: 120px;
+    font-size: 12px;
+  }
+
+  .carebridge-settings .rule-row input {
+    width: 70px;
+  }
+
+  .carebridge-settings .tier {
+    font-size: 12px;
+  }
+
+  .carebridge-settings .rule-row .code {
+    width: 12px;
+  }
+
+  .carebridge-settings .detail-head h1 {
+    font-size: 26px;
+  }
+
+  .carebridge-settings .actions-right {
+    margin-left: 0;
+  }
+
+  .carebridge-settings .actions {
+    align-items: stretch;
+  }
+
+  .carebridge-settings .actions-right>* {
+    flex: 1;
+  }
+
+}
+
+.carebridge-settings > :is(.notice, .group, .actions, .detail-head) {
+  max-width: 760px;
+}
+
+.carebridge-settings > section {
+  max-width: 960px;
+}
+
+.carebridge-settings > .detail-head {
+  margin-bottom: 0;
+}
+
+.carebridge-settings > section h2.group-label {
+  font-size: 16px;
+  letter-spacing: -.2px;
+  color: var(--cb-ink);
+}

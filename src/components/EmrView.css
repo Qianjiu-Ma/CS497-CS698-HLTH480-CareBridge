@@ -1,0 +1,607 @@
+.emr-archive button:focus-visible,
+.emr-archive input:focus-visible,
+.emr-archive select:focus-visible,
+.emr-archive summary:focus-visible {
+  outline: 3px solid var(--cb-accent);
+  outline-offset: 3px;
+}
+
+.emr-archive svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  flex: none;
+  vertical-align: middle;
+}
+
+.emr-archive h2 {
+  font-size: 19px;
+  letter-spacing: -.3px;
+  margin: 0;
+  font-weight: 700;
+}
+
+.emr-archive h3 {
+  font-size: 15px;
+  margin: 0 0 8px;
+  font-weight: 700;
+}
+
+.emr-archive .muted {
+  font-size: 13px;
+  color: var(--cb-muted);
+}
+
+.emr-archive .quiet {
+  color: var(--cb-accent);
+  font-weight: 650;
+}
+
+.emr-archive .record:hover,
+.emr-archive .action:hover {
+  background: #eff6f4;
+}
+
+.emr-archive .tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.emr-archive .search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #d4dfe0;
+  background: var(--cb-surface);
+  border-radius: 10px;
+  padding: 0 13px;
+  flex: 1;
+  min-width: 0;
+  color: var(--cb-muted);
+}
+
+.emr-archive .search input {
+  border: none;
+  background: transparent;
+  width: 100%;
+  padding: 12px 0;
+  outline: none;
+  min-width: 0;
+}
+
+.emr-archive .search:focus-within {
+  outline: 2px solid var(--cb-accent);
+}
+
+.emr-archive .search input::placeholder {
+  color: #626f75;
+}
+
+.emr-archive .search input:focus-visible {
+  outline: none;
+}
+
+.emr-archive .small {
+  font-size: 13px;
+}
+
+.emr-archive .filterpanel {
+  background: var(--cb-surface);
+  border: 1px solid var(--cb-line);
+  border-radius: 10px;
+  margin: -10px 0 18px;
+  padding: 14px;
+  display: flex;
+  gap: 16px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.emr-archive .filterpanel[hidden] {
+  display: none;
+}
+
+.emr-archive .filterpanel label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.emr-archive .filterpanel select {
+  padding: 8px;
+  border: 1px solid #d4dfe0;
+  border-radius: 6px;
+  background: var(--cb-surface);
+  max-width: 100%;
+}
+
+.emr-archive .filterpanel .filter-check {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.emr-archive .sectionlabel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 10px;
+}
+
+.emr-archive .sectionlabel > strong {
+  font-size: 15px;
+}
+
+.emr-archive .archive {
+  background: var(--cb-surface);
+  border: 1px solid var(--cb-line);
+  border-radius: var(--cb-radius);
+  overflow: hidden;
+}
+
+.emr-archive .shift {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 17px 20px;
+  border-bottom: 1px solid var(--cb-line);
+  min-height: 111px;
+}
+
+.emr-archive .docicon {
+  width: 46px;
+  height: 46px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  background: var(--cb-accent-soft);
+  color: var(--cb-accent);
+  flex: none;
+}
+
+.emr-archive .docicon svg {
+  width: 25px;
+  height: 25px;
+}
+
+.emr-archive .shiftmeta {
+  flex: 1;
+  min-width: 0;
+}
+
+.emr-archive .shiftmeta h2 {
+  margin-bottom: 3px;
+}
+
+.emr-archive .signed {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--cb-accent);
+  font-weight: 650;
+}
+
+.emr-archive .shiftlinks {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.emr-archive .shiftlinks button {
+  min-height: 44px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  color: var(--cb-accent);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.emr-archive .shiftlinks button:hover {
+  background: #edf6f3;
+}
+
+.emr-archive .records {
+  padding: 0 20px;
+}
+
+.emr-archive .record {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 44px minmax(125px,.8fr) minmax(0,2fr) 20px;
+  gap: 12px;
+  align-items: center;
+  text-align: left;
+  min-height: 70px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--cb-line);
+}
+
+.emr-archive .record:last-child {
+  border-bottom: 0;
+}
+
+.emr-archive .room {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--cb-neutral-soft);
+  font-size: 14px;
+  font-weight: 650;
+  color: #445760;
+}
+
+.emr-archive .room.change {
+  background: var(--cb-warning-soft);
+  color: var(--cb-warning);
+}
+
+.emr-archive .name {
+  font-weight: 650;
+  display: block;
+  font-size: 15px;
+}
+
+.emr-archive .finding {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.emr-archive .finding.change {
+  color: #83521b;
+  font-weight: 600;
+}
+
+.emr-archive .chev {
+  color: #687c86;
+}
+
+.emr-archive .archivefooter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--cb-line);
+  padding: 9px 13px;
+}
+
+.emr-archive .action {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 9px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  min-height: 44px;
+}
+
+.emr-archive .action svg {
+  color: var(--cb-accent);
+  width: 18px;
+  height: 18px;
+}
+
+.emr-archive .archivefooter .last {
+  margin-left: auto;
+}
+
+.emr-archive .empty {
+  padding: 36px;
+  text-align: center;
+  color: var(--cb-muted);
+}
+
+.emr-archive dialog {
+  border: 1px solid var(--cb-line);
+  border-radius: var(--cb-dialog-radius);
+  padding: 0;
+  width: min(650px,calc(100% - 24px));
+  max-height: 90dvh;
+  color: var(--cb-ink);
+  box-shadow: var(--cb-dialog-shadow);
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  overflow: auto;
+  background: var(--cb-surface);
+  overscroll-behavior: contain;
+}
+
+.emr-archive dialog::backdrop {
+  background: var(--cb-dialog-shade);
+  backdrop-filter: blur(2px);
+}
+
+.emr-archive .modalhead {
+  position: sticky;
+  top: 0;
+  background: var(--cb-surface);
+  border-bottom: 1px solid var(--cb-line);
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 1;
+}
+
+.emr-archive .modalhead>div {
+  flex: 1;
+}
+
+.emr-archive .close {
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 8px;
+  background: #f0f3f4;
+  display: grid;
+  place-items: center;
+}
+
+.emr-archive .archive-body {
+  padding: 8px 24px 24px;
+}
+
+.emr-archive .detail {
+  padding: 17px 0;
+  border-bottom: 1px solid var(--cb-line);
+}
+
+.emr-archive .detail:last-child {
+  border: 0;
+}
+
+.emr-archive .detail p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.emr-archive .detail h3 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.emr-archive .detail h3 svg {
+  color: var(--cb-accent);
+  width: 18px;
+  height: 18px;
+}
+
+.emr-archive .metric {
+  font-size: 25px;
+  font-weight: 700;
+  letter-spacing: -.5px;
+}
+
+.emr-archive .log {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 12px;
+  margin: 15px 0;
+}
+
+.emr-archive .log svg {
+  color: var(--cb-accent);
+}
+
+.emr-archive .log strong {
+  display: block;
+}
+
+.emr-archive .fulltable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.emr-archive .fulltable th,
+.emr-archive .fulltable td {
+  border-bottom: 1px solid var(--cb-line);
+  padding: 11px;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.emr-archive .fulltable th {
+  background: #f1f4f5;
+}
+
+.emr-archive .wide {
+  width: min(1100px,calc(100% - 24px));
+}
+
+.emr-archive .tablewrap {
+  overflow-x: auto;
+}
+
+.emr-archive .fulltable {
+  min-width: 650px;
+}
+
+.emr-archive .fulltable th[scope=row] {
+  min-width: 92px;
+  font-weight: 650;
+}
+
+.emr-archive .fulltable th:first-child {
+  min-width: 92px;
+}
+
+.emr-archive :where(button, summary):not(:disabled) {
+  cursor: pointer;
+}
+
+.emr-archive :where(button, input, select) {
+  font: inherit;
+}
+
+.emr-archive .archive + .archive {
+  margin-top: 14px;
+}
+
+.emr-archive .history-meta,
+.emr-archive .archive-buttons {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.emr-archive .archive-buttons {
+  justify-content: flex-start;
+}
+
+.emr-archive .sources {
+  display: grid;
+  grid-template-columns: minmax(96px, 1fr) minmax(0, 3fr);
+  gap: 5px 12px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.emr-archive .sources dt {
+  font-weight: 650;
+}
+
+.emr-archive .sources dd {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.emr-archive .original {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.emr-archive .detail-list,
+.emr-archive .resident-documentation {
+  margin: 8px 0 0;
+}
+
+.emr-archive .detail-list li + li {
+  margin-top: 10px;
+}
+
+.emr-archive .resident-documentation {
+  padding: 10px 12px;
+  border: 1px solid var(--cb-line);
+  border-radius: 8px;
+}
+
+.emr-archive .change-text {
+  color: #83521b;
+}
+
+.emr-archive .fulltable th[scope=row] {
+  background: var(--cb-surface);
+}
+
+.emr-print-record {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .emr-archive .shift {
+    padding: 15px 13px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .emr-archive .shiftlinks {
+    padding-left: 56px;
+    width: 100%;
+  }
+
+  .emr-archive .shiftlinks button {
+    padding: 4px 6px;
+  }
+
+  .emr-archive .records {
+    padding: 0 13px;
+  }
+
+  .emr-archive .record {
+    grid-template-columns: 40px minmax(0,1fr) 18px;
+    gap: 4px 10px;
+    padding: 12px 0;
+  }
+
+  .emr-archive .record .room {
+    grid-row: 1/3;
+  }
+
+  .emr-archive .record .finding {
+    grid-column: 2;
+    grid-row: 2;
+    font-size: 13px;
+  }
+
+  .emr-archive .record .chev {
+    grid-column: 3;
+    grid-row: 1/3;
+  }
+
+  .emr-archive .archivefooter {
+    gap: 1px;
+    padding: 6px;
+  }
+
+  .emr-archive .archivefooter .last {
+    margin-left: 0;
+  }
+
+  .emr-archive .action {
+    padding: 8px;
+    font-size: 12px;
+  }
+
+  .emr-archive .archive-body {
+    padding: 6px 16px 18px;
+  }
+
+  .emr-archive .modalhead {
+    padding: 16px;
+  }
+
+  .emr-archive .tools {
+    gap: 7px;
+  }
+
+}
+
+@media print {
+  body:has(> .emr-print-record) > :not(.emr-print-record) {
+    display: none !important;
+  }
+
+  .emr-print-record {
+    display: block;
+    color: black;
+    font: 10pt/1.45 Arial, sans-serif;
+  }
+
+  .emr-print-record h1 {
+    font-size: 17pt;
+    font-weight: 700;
+    margin-bottom: 12pt;
+  }
+
+  .emr-print-record pre {
+    font: inherit;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}

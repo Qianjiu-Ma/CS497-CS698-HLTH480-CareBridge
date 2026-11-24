@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion } from 'motion/react';
 import {
   HandoffRow,
   AlertThresholds,
@@ -534,27 +533,21 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
       : notDoneText;
 
   return (
-    <motion.div
+    <div
       key={row.room}
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ type: 'spring', bounce: 0, duration: 0.24 }}
-      className="bg-white border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100"
+      className="cb-panel cb-resident-card"
     >
       {/* 1. Resident Header: Distinct Clinical Status vs. Nurse Notification */}
-      <div className="px-5 py-3.5 flex flex-wrap items-start justify-between gap-3">
+      <div className="cb-resident-header flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-            <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
-              <span className="font-mono tabular-nums text-slate-400 font-semibold mr-1.5">
-                {row.room}
-              </span>
-              <span>{row.residentName}</span>
+            <h2 className="cb-resident-title">
+              {row.residentName} <span>· Room {row.room}</span>
             </h2>
 
             {isTranslatingFile ? (
               <span className="inline-flex items-center gap-1 text-xs text-teal-700">
-                <Loader2 className="w-3 h-3 animate-spin" />
+                <Loader2 className="w-3 h-3 cb-pending" />
                 <span>Translating</span>
               </span>
             ) : savedNotice ? (
@@ -567,9 +560,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
             <span
               className={`inline-flex items-center gap-1.5 font-semibold ${
                 status.clinicalLevel === 'urgent'
-                  ? status.nurseState === 'notify_now'
-                    ? 'text-rose-800'
-                    : 'text-amber-900'
+                  ? 'cb-urgent'
                   : status.clinicalLevel === 'elevated'
                   ? 'text-amber-800'
                   : status.clinicalLevel === 'watch'
@@ -586,7 +577,8 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
               ) : (
                 <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
               )}
-              <span>{status.clinicalSummary}</span>
+              <span>{status.isUrgent ? 'Priority attention' : status.clinicalLevel === 'elevated' ? 'This shift' :
+                status.clinicalLevel === 'routine' ? 'No change recorded' : status.clinicalSummary}</span>
             </span>
 
             {/* Orthogonal Nurse Notification Status */}
@@ -619,7 +611,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
             <button
               type="button"
               onClick={handleConfirmAllInResident}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap active:scale-[0.98]"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap"
             >
               <Check className="w-3.5 h-3.5" />
               <span>Confirm pending</span>
@@ -630,7 +622,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
             <button
               type="button"
               onClick={() => onSelectResident(prevRow.room)}
-              className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer active:scale-[0.98]"
+              className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
               title={`Previous: Room ${prevRow.room} (${prevRow.residentName})`}
             >
               <ChevronLeft className="w-4 h-4" />
@@ -642,7 +634,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
             <button
               type="button"
               onClick={() => onSelectResident(nextRow.room)}
-              className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer active:scale-[0.98]"
+              className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
               title={`Next: Room ${nextRow.room} (${nextRow.residentName})`}
             >
               <span className="font-mono tabular-nums">{nextRow.room}</span>
@@ -653,11 +645,11 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
       </div>
 
       {/* 2. Read-First Horizontal Shift Measurements Strip */}
-      <div className="px-5 py-3 bg-slate-50/40">
+      <div className="cb-resident-metrics">
         {!isEditingVitals ? (
           <>
           <div className="flex items-start justify-between gap-3">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-2 flex-1">
+            <div className="cb-resident-metric-grid">
               <button
                 type="button"
                 disabled={isLocked}
@@ -700,7 +692,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                 onClick={() => !isLocked && setIsEditingVitals(true)}
                 className="text-left group cursor-pointer disabled:cursor-default"
               >
-                <div className="text-[11px] font-medium text-slate-500">Bowel movement</div>
+                <div className="text-[11px] font-medium text-slate-500">Last bowel movement</div>
                 <div
                   className={`text-sm font-semibold mt-0.5 leading-snug ${
                     isBmOverdue ? 'text-rose-800' : 'text-slate-900 group-hover:text-teal-800'
@@ -941,11 +933,11 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
       </div>
 
       {/* 3. Main 2-Column Workspace (Reduces vertical scrolling on desktop) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 lg:divide-x divide-slate-100">
+      <div className="cb-resident-columns">
         {/* Left Column: Completed Care + Health & Changes */}
-        <div className="lg:col-span-7 divide-y divide-slate-100">
+        <div className="cb-resident-observations">
           {/* GROUP 1: Completed Care (Read-first, Edit-on-demand) */}
-          <section className="px-5 py-4 space-y-2.5">
+          <section className="cb-resident-section space-y-2.5">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-slate-900">Completed care</h3>
 
@@ -1039,7 +1031,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                       className="inline-flex items-center gap-1 text-xs font-medium text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-2.5 py-1 rounded-lg cursor-pointer"
                     >
                       {translatingFieldToEn === 'done' ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <Loader2 className="w-3 h-3 cb-pending" />
                       ) : (
                         <Languages className="w-3 h-3" />
                       )}
@@ -1069,7 +1061,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                         key={chip.en}
                         type="button"
                         onClick={() => handleAddCareChip(chip.en)}
-                        className="text-xs font-medium bg-slate-50 hover:bg-teal-50 hover:text-teal-900 text-slate-700 border border-slate-200 hover:border-teal-300 px-2.5 py-1 rounded-lg transition-colors cursor-pointer active:scale-[0.98]"
+                        className="text-xs font-medium bg-slate-50 hover:bg-teal-50 hover:text-teal-900 text-slate-700 border border-slate-200 hover:border-teal-300 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
                       >
                         + {chipDisplay}
                       </button>
@@ -1081,10 +1073,10 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
           </section>
 
           {/* GROUP 2: Health & Changes (Progressive Stop & Watch + Nurse Escalation + Notes) */}
-          <section className="px-5 py-4 space-y-3.5">
+          <section className="cb-resident-section space-y-3.5">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-slate-900">
-                Health &amp; changes
+                Health changes
               </h3>
 
               {!isLocked && (
@@ -1219,7 +1211,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                         type="button"
                         disabled={isLocked}
                         onClick={() => toggleCode(item.id)}
-                        className={`px-2.5 py-1.5 rounded-xl border text-left transition-colors cursor-pointer active:scale-[0.98] flex items-center gap-2 group ${
+                        className={`px-2.5 py-1.5 rounded-xl border text-left transition-colors cursor-pointer flex items-center gap-2 group ${
                           isSelected
                             ? `${tierBadge.badgeBg} ${tierBadge.badgeBorder} ${tierBadge.badgeColor} font-semibold`
                             : 'bg-slate-50/70 hover:bg-slate-100 border-slate-200/80 text-slate-700'
@@ -1277,7 +1269,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
             {/* Observations & Mood (Read-first, Edit-on-demand) */}
             <div className="space-y-1.5 pt-1">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-medium text-slate-500">Observations &amp; mood</span>
+                <h3 className="cb-observation-heading">Observations</h3>
                 <div className="flex items-center gap-2">
                   {fileLanguage !== 'en' && additionalNotesText.trim() && (
                     <>
@@ -1341,7 +1333,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                         className="inline-flex items-center gap-1 text-xs font-medium text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-2.5 py-1 rounded-lg cursor-pointer"
                       >
                         {translatingFieldToEn === 'notes' ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
+                          <Loader2 className="w-3 h-3 cb-pending" />
                         ) : (
                           <Languages className="w-3 h-3" />
                         )}
@@ -1428,7 +1420,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
         </div>
 
         {/* Right Column: Unified Next Shift (Notes + Actionable Tasks) */}
-        <section className="lg:col-span-5 px-5 py-4 space-y-3 border-t lg:border-t-0 border-slate-100">
+        <section className="cb-resident-section cb-resident-next space-y-3">
           {(() => {
             const hasNextNote = Boolean(notDoneText.trim() && notDoneText.trim() !== '—');
             const completedTasksCount = careRequirements.filter((r) => r.completed).length;
@@ -1548,7 +1540,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                           className="inline-flex items-center gap-1 text-xs font-medium text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-2.5 py-1 rounded-lg cursor-pointer"
                         >
                           {translatingFieldToEn === 'notDone' ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <Loader2 className="w-3 h-3 cb-pending" />
                           ) : (
                             <Languages className="w-3 h-3" />
                           )}
@@ -1725,7 +1717,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                       type="button"
                       onClick={handleAddManualRequirement}
                       disabled={!newReqText.trim()}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-teal-700 hover:bg-teal-800 disabled:opacity-50 text-white rounded-lg text-xs font-semibold cursor-pointer active:scale-[0.98]"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-teal-700 hover:bg-teal-800 disabled:opacity-50 text-white rounded-lg text-xs font-semibold cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>Add</span>
@@ -1770,6 +1762,6 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
             />
           );
         })()}
-    </motion.div>
+    </div>
   );
 };

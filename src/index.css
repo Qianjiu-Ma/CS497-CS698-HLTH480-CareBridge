@@ -1,4 +1,11 @@
 @import "tailwindcss";
+@import "./carebridge.css";
+@import "./carebridge-motion.css";
+
+@theme {
+  --default-transition-duration: var(--cb-motion-feedback);
+  --default-transition-timing-function: var(--cb-motion-change);
+}
 
 @layer base {
   body {
@@ -32,9 +39,8 @@
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    animation: none !important;
+    transition: none !important;
     scroll-behavior: auto !important;
   }
 }

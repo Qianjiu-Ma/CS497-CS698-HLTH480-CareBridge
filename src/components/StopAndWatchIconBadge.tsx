@@ -151,10 +151,10 @@ export const StopAndWatchIconBadge: React.FC<StopAndWatchIconBadgeProps> = ({
     <>
       <span
         onClick={handleClick}
-        className={`inline-flex items-center rounded-md font-semibold border transition-all shadow-2xs select-none ${
+        className={`inline-flex items-center rounded-md font-semibold border transition-colors shadow-2xs select-none ${
           tierMeta.badgeBg
         } ${tierMeta.badgeColor} ${tierMeta.badgeBorder} ${paddingClass} ${textClass} ${
-          interactive ? 'hover:brightness-95 hover:shadow-xs cursor-pointer active:scale-95' : ''
+          interactive ? 'hover:brightness-95 hover:shadow-xs cursor-pointer' : ''
         }`}
         title={plainTitle}
         role={interactive ? 'button' : undefined}
@@ -224,7 +224,7 @@ export const StopAndWatchDetailModal: React.FC<StopAndWatchDetailModalProps> = (
 
   return (
     <div
-      className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4 backdrop-blur-2xs animate-fadeIn"
+      className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4 backdrop-blur-2xs"
       onClick={onClose}
     >
       <div

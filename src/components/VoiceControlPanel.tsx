@@ -21,6 +21,8 @@ import {
   CheckCircle2,
   ArrowRight,
   BookOpen,
+  SlidersHorizontal,
+  FileText,
 } from 'lucide-react';
 import { useSupportedLanguages } from '../utils/languagesClient';
 import { DEMO_SCENARIOS, DemoScenario } from '../data/seedData';
@@ -37,6 +39,7 @@ import {
 } from '../utils/geminiParser';
 import { StopAndWatchIconBadge, findCodeIdFromFlagText } from './StopAndWatchIconBadge';
 import { InterfaceLanguage } from '../utils/uiTranslations';
+import { Button } from './WorkspaceUi';
 
 interface VoiceControlPanelProps {
   onProcessTranscript: (
@@ -70,6 +73,7 @@ interface VoiceControlPanelProps {
   onUpdateRow?: (room: string, updated: Partial<HandoffRow>) => void;
   interfaceLanguage?: InterfaceLanguage;
   resetVersion?: number;
+  toolbarActions?: React.ReactNode;
 }
 
 const VOICE_DRAFTS_STORAGE_KEY = 'carebridge_voice_drafts_v1';
@@ -141,6 +145,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
   onUpdateRow,
   interfaceLanguage = 'en',
   resetVersion = 0,
+  toolbarActions,
 }) => {
   const {
     priorityLanguages,
@@ -450,13 +455,16 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
       source.connect(analyser);
 
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
       const updateLevel = () => {
         if (!analyserRef.current) return;
-        analyserRef.current.getByteFrequencyData(dataArray);
-        let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-        const avg = sum / dataArray.length;
-        setAudioLevel(Math.min(100, Math.round(avg * 1.5)));
+        if (!reducedMotion.matches) {
+          analyserRef.current.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+          const avg = sum / dataArray.length;
+          setAudioLevel(Math.min(100, Math.round(avg * 1.5)));
+        }
         animFrameRef.current = requestAnimationFrame(updateLevel);
       };
       updateLevel();
@@ -1108,64 +1116,60 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
       detectedSourceLanguage !== 'und');
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl px-3.5 py-2.5 space-y-3">
+    <div className="cb-report">
       {/* Unified Single-Row Report Controls */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          {/* Primary Microphone Control */}
-          <button
-            type="button"
-            onClick={toggleListening}
-            className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-colors whitespace-nowrap active:scale-[0.98] ${
-              isListening
-                ? 'bg-rose-700 hover:bg-rose-800 text-white ring-2 ring-rose-200'
-                : 'bg-teal-700 hover:bg-teal-800 text-white'
-            }`}
-          >
-            {isListening ? (
-              <>
-                <MicOff className="w-3.5 h-3.5" />
-                <span className="font-mono tabular-nums">
-                  Stop ({formatTimer(secondsListening)})
-                </span>
-              </>
-            ) : (
-              <>
-                <Mic className="w-3.5 h-3.5" />
-                <span>
-                  {effectiveScope === 'resident' && focusedRow
-                    ? `Dictate · Rm ${focusedRow.room}`
-                    : 'Voice Report'}
-                </span>
-              </>
-            )}
-          </button>
+          <Button variant={isListening ? 'danger' : 'primary'} onClick={toggleListening}>
+            {isListening ? <><MicOff /> Stop ({formatTimer(secondsListening)})</> : <><Mic />
+              {effectiveScope === 'resident' && focusedRow ? 'Report · Room ' + focusedRow.room : 'Report · All residents'}
+            </>}
+          </Button>
 
           {/* Live Audio Level Bars while recording */}
           {isListening && (
             <div className="flex items-center gap-2 px-2.5 py-1 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-900">
-              <div className="flex items-end gap-0.5 h-3 w-7" aria-hidden="true">
+              <div className="cb-audio-meter flex items-end gap-0.5 h-3 w-7" aria-hidden="true">
                 <span
-                  className="w-1 bg-rose-600 rounded-full transition-all duration-75"
-                  style={{ height: `${Math.max(20, Math.min(100, audioLevel * 1.4))}%` }}
+                  className="w-1 bg-rose-600 rounded-full"
+                  style={{ transform: `scaleY(${Math.max(20, Math.min(100, audioLevel * 1.4)) / 100})` }}
                 />
                 <span
-                  className="w-1 bg-rose-700 rounded-full transition-all duration-75"
-                  style={{ height: `${Math.max(30, Math.min(100, audioLevel * 2.1))}%` }}
+                  className="w-1 bg-rose-700 rounded-full"
+                  style={{ transform: `scaleY(${Math.max(30, Math.min(100, audioLevel * 2.1)) / 100})` }}
                 />
                 <span
-                  className="w-1 bg-rose-600 rounded-full transition-all duration-75"
-                  style={{ height: `${Math.max(18, Math.min(100, audioLevel * 1.2))}%` }}
+                  className="w-1 bg-rose-600 rounded-full"
+                  style={{ transform: `scaleY(${Math.max(18, Math.min(100, audioLevel * 1.2)) / 100})` }}
                 />
                 <span
-                  className="w-1 bg-rose-700 rounded-full transition-all duration-75"
-                  style={{ height: `${Math.max(25, Math.min(100, audioLevel * 1.7))}%` }}
+                  className="w-1 bg-rose-700 rounded-full"
+                  style={{ transform: `scaleY(${Math.max(25, Math.min(100, audioLevel * 1.7)) / 100})` }}
                 />
               </div>
               <span className="text-[11px] font-medium text-rose-800">Listening</span>
             </div>
           )}
 
+        </div>
+        <div className="cb-page-actions">
+          {toolbarActions}
+          <div className="relative" ref={scenarioDropdownRef}>
+            <Button id="report-more-trigger" aria-expanded={activeScenarioOpen} aria-controls="report-more-panel"
+              onClick={() => setActiveScenarioOpen(!activeScenarioOpen)}>
+              <SlidersHorizontal /> More
+            </Button>
+            {activeScenarioOpen && (
+              <div className="cb-panel cb-report-menu cb-motion-popover" id="report-more-panel">
+                <Button variant="quiet" aria-controls="report-drawer"
+                  onClick={() => {
+                    setIsExpanded(!isExpanded);
+                    setActiveScenarioOpen(false);
+                    requestAnimationFrame(() => {
+                      if (!isExpanded) document.getElementById('handoff-report-input')?.focus();
+                    });
+                  }}><FileText /> {isExpanded ? 'Hide input' : 'Type note'}</Button>
+                <div className="cb-report-options">
           {/* Scope Toggle (only shown when inside an individual resident file) */}
           {focusedRow && (
             <div
@@ -1176,6 +1180,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
               <button
                 type="button"
                 onClick={() => setReportScope('resident')}
+                aria-pressed={effectiveScope === 'resident'}
                 className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer whitespace-nowrap ${
                   effectiveScope === 'resident'
                     ? 'bg-white text-slate-900 shadow-2xs font-semibold'
@@ -1186,6 +1191,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
               </button>
               <button
                 type="button"
+                aria-pressed={effectiveScope === 'unit'}
                 onClick={() => {
                   setReportScope('unit');
                   setPendingSingleRecord(null);
@@ -1229,38 +1235,10 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
               )}
             </select>
             {isLoadingLanguages && (
-              <Loader2 className="w-3 h-3 animate-spin text-slate-400" />
+              <Loader2 className="w-3 h-3 cb-pending text-slate-400" />
             )}
           </div>
-        </div>
-
-        {/* Right Controls: Type Note + Consolidated More Menu */}
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
-          >
-            <span>{showDrawer ? 'Hide input' : 'Type note'}</span>
-            {showDrawer ? (
-              <ChevronUp className="w-3.5 h-3.5" />
-            ) : (
-              <ChevronDown className="w-3.5 h-3.5" />
-            )}
-          </button>
-
-          <div className="relative" ref={scenarioDropdownRef}>
-            <button
-              type="button"
-              onClick={() => setActiveScenarioOpen(!activeScenarioOpen)}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer whitespace-nowrap active:scale-[0.98]"
-            >
-              <span>Samples &amp; guide</span>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-            </button>
-
-            {activeScenarioOpen && (
-              <div className="absolute right-0 mt-1.5 w-80 bg-white border border-slate-200 rounded-xl shadow-lg z-30 p-2 space-y-1 text-left">
+                </div>
                 {onOpenGuide && (
                   <>
                     <button
@@ -1308,7 +1286,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
 
       {/* Collapsible Dictation & Translation Workspace */}
       {showDrawer && (
-        <div className="pt-3 border-t border-slate-100 space-y-3">
+        <div className="cb-panel cb-report-drawer space-y-3" id="report-drawer">
           {errorMessage && (
             <div className="bg-amber-50 border border-amber-200 text-amber-950 rounded-xl p-3 text-xs flex items-start justify-between gap-3">
               <div className="flex items-start gap-2">
@@ -1385,6 +1363,8 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                 </div>
 
                 <textarea
+                  id="handoff-report-input"
+                  aria-label="Handoff report"
                   value={inputText}
                   onChange={handleInputChange}
                   rows={showTranslationPane ? 3 : 2}
@@ -1446,11 +1426,11 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                       externalProcessing ||
                       isExtractingSingle
                     }
-                    className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-teal-700 hover:bg-teal-800 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer active:scale-[0.98]"
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-teal-700 hover:bg-teal-800 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
                   >
                     {isExtractingSingle || externalProcessing ? (
                       <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <Loader2 className="w-3.5 h-3.5 cb-pending" />
                         <span>Extracting...</span>
                       </>
                     ) : (
@@ -1485,7 +1465,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                           </span>
                         )}
                       {(isTranslating || externalProcessing || isExtractingSingle) && (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-700" />
+                        <Loader2 className="w-3.5 h-3.5 cb-pending text-teal-700" />
                       )}
                     </div>
 
@@ -1557,7 +1537,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                       <div>{liveTranslationText}</div>
                     ) : isTranslating ? (
                       <div className="text-teal-700 italic flex items-center gap-2 py-3 text-xs">
-                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <Loader2 className="w-4 h-4 cb-pending" />
                         <span>Translating...</span>
                       </div>
                     ) : (
@@ -1606,11 +1586,11 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                       externalProcessing ||
                       isExtractingSingle
                     }
-                    className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-teal-700 hover:bg-teal-800 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer active:scale-[0.98]"
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-teal-700 hover:bg-teal-800 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
                   >
                     {isExtractingSingle || externalProcessing ? (
                       <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <Loader2 className="w-3.5 h-3.5 cb-pending" />
                         <span>Extracting...</span>
                       </>
                     ) : (
@@ -1716,7 +1696,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                 <button
                   type="button"
                   onClick={handleConfirmSingleExtraction}
-                  className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer active:scale-[0.98]"
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
                 >
                   <Check className="w-4 h-4" />
                   <span>Save to Rm {focusedRow.room}</span>
@@ -1950,7 +1930,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                                 title="Retranslate"
                               >
                                 <RefreshCw
-                                  className={`w-3 h-3 ${seg.isTranslating ? 'animate-spin' : ''}`}
+                                  className={`w-3 h-3 ${seg.isTranslating ? 'cb-pending' : ''}`}
                                 />
                               </button>
                               {displayTranslation && (

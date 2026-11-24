@@ -1,25 +1,14 @@
-import React from 'react';
-import { AlertThresholds } from '../types/handoff';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  Sliders,
-  Printer,
-  Shield,
-  Lock,
-  Cloud,
-  FileCheck,
-  Sparkles,
-  RotateCcw,
-  OctagonAlert,
-  AlertTriangle,
-  Info,
+  ChevronLeft, ChevronRight, Info, Lock, Mic, Printer, ShieldCheck, SlidersVertical, TriangleAlert,
 } from 'lucide-react';
+import { AlertThresholds } from '../types/handoff';
+import { DEFAULT_THRESHOLDS } from '../data/seedData';
 import {
-  STOP_AND_WATCH_CODES,
-  DEFAULT_CODE_TIERS,
-  TIER_METADATA,
-  StopAndWatchCodeConfig,
-  SeverityTier,
+  DEFAULT_CODE_TIERS, SeverityTier, STOP_AND_WATCH_CODES, StopAndWatchCodeConfig,
 } from '../data/stopAndWatchCodes';
+import './SettingsView.css';
+import { Button, PageHeader, StatusToast, WorkspaceFooter } from './WorkspaceUi';
 
 interface SettingsViewProps {
   thresholds: AlertThresholds;
@@ -27,338 +16,387 @@ interface SettingsViewProps {
   onPrintPaperFallback: () => void;
 }
 
-export const SettingsView: React.FC<SettingsViewProps> = ({
-  thresholds,
-  onUpdateThresholds,
-  onPrintPaperFallback,
-}) => {
-  const currentCodeTiers = thresholds.customCodeTiers || DEFAULT_CODE_TIERS;
+type Page = 'home' | 'rules' | 'thresholds' | 'privacy' | 'about';
 
-  const handleThresholdChange = (field: keyof AlertThresholds, value: number) => {
-    onUpdateThresholds({
-      ...thresholds,
-      [field]: value,
+const metrics = [
+  { key: 'bowelMovementHoursThreshold', name: 'No bowel movement alert', unit: 'h' },
+  { key: 'fluidIntakeMinMl', name: 'Daily minimum fluids', unit: 'mL' },
+  { key: 'weightChangeKgThreshold', name: 'Weight change alert', unit: 'kg', storedOnly: true },
+  { key: 'repositioningMaxHours', name: 'Repositioning interval', unit: 'h', storedOnly: true },
+] as const;
+
+type MetricKey = typeof metrics[number]['key'];
+type Draft = { kind: 'rules'; values: Record<string, SeverityTier> }
+  | { kind: 'thresholds'; values: Record<MetricKey, string> };
+type Change = { name: string; before: string; after: string };
+type Dialog = { kind: 'pause' | 'discard-home' | 'discard' | 'restore' | 'print' }
+  | { kind: 'info'; code: StopAndWatchCodeConfig }
+  | { kind: 'review'; changes: Change[]; patch: Partial<AlertThresholds> };
+
+const tierNames: Record<SeverityTier, string> = { 1: 'Monitor', 2: 'This shift', 3: 'Report now' };
+const tierOrder = [3, 2, 1] as const;
+const tierText = (tier: SeverityTier) => 'Tier ' + tier + ' · ' + tierNames[tier];
+const speechDefault = DEFAULT_THRESHOLDS.silenceBufferSeconds ?? 0.8;
+
+const information = {
+  privacy: [
+    ['Human review', 'Automation assists with documentation. Staff verify extracted entries before submission. Clinical decisions remain with the nurse.'],
+    ['Browser storage', 'The browser saves settings, active handoff data and simulated archives, including submitted transcripts, in local storage. Voice drafts and segments use tab session storage.'],
+    ['Speech & external processing', 'Browser speech recognition may use an external speech service. Translation can send text to Google, as can Gemini features when configured. The app server caches some results in memory.'],
+    ['Access & deployment', 'This prototype is for fictional data. The app has no sign-in or role enforcement. Facility-managed devices, private network access, Canadian hosting and role-based access are proposed production safeguards.'],
+  ],
+  about: [
+    ['CareBridge Handoff', 'Multilingual voice-to-checklist handoff for long-term care. The React interface uses an Express server for extraction and translation.'],
+    ['Simulated integration', 'Submitted shifts appear in a read-only archive in this browser. Sync is simulated. There is no live EMR connection.'],
+    ['Paper fallback', 'Print blank handoff sheet opens the original CareBridge paper fallback.'],
+    ['Future development', 'Live EMR integration, historical contradiction checks and proactive reminders are proposed production features.'],
+  ],
+} as const;
+
+export const SettingsView: React.FC<SettingsViewProps> = ({ thresholds, onUpdateThresholds, onPrintPaperFallback }) => {
+  const [page, setPage] = useState<Page>('home');
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [pauseDraft, setPauseDraft] = useState(speechDefault);
+  const [invalidFields, setInvalidFields] = useState<MetricKey[]>([]);
+  const [toast, setToast] = useState('');
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const editButtonRef = useRef<HTMLButtonElement>(null);
+  const settingsRoot = useRef<HTMLDivElement>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const speechPause = thresholds.silenceBufferSeconds ?? speechDefault;
+  const currentTiers = { ...DEFAULT_CODE_TIERS, ...thresholds.customCodeTiers };
+  const pageTitle = page === 'rules' ? 'Stop & Watch rules' : page === 'thresholds' ? 'Alert thresholds'
+    : page === 'privacy' ? 'Privacy & safety' : page === 'about' ? 'About CareBridge' : 'Settings';
+
+  useEffect(() => {
+    if (dialog && !dialogRef.current?.open) dialogRef.current?.showModal();
+  }, [dialog]);
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
+
+  const notify = (message: string) => {
+    setToast(message);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(''), 4000);
+  };
+
+  const openDialog = (next: Dialog, trigger: HTMLElement) => {
+    openerRef.current = trigger;
+    setDialog(next);
+  };
+
+  const closeDialog = () => dialogRef.current?.close();
+
+  const navigate = (next: Page) => {
+    setPage(next);
+    setDraft(null);
+    setInvalidFields([]);
+    setToast('');
+    requestAnimationFrame(() => {
+      const homeRow = next === 'home' && [...(settingsRoot.current?.querySelectorAll<HTMLButtonElement>('.setting') || [])]
+        .find((button) => button.dataset.setting === pageTitle);
+      (homeRow || headingRef.current)?.focus({ preventScroll: true });
+      window.scrollTo(0, 0);
     });
   };
 
-  const handleCodeTierChange = (codeId: string, tier: 1 | 2 | 3) => {
-    onUpdateThresholds({
-      ...thresholds,
-      customCodeTiers: {
-        ...currentCodeTiers,
-        [codeId]: tier,
-      },
-    });
+  const edit = () => {
+    setInvalidFields([]);
+    if (page === 'rules') setDraft({ kind: 'rules', values: currentTiers });
+    if (page === 'thresholds') {
+      setDraft({
+        kind: 'thresholds',
+        values: {
+          bowelMovementHoursThreshold: String(thresholds.bowelMovementHoursThreshold ?? DEFAULT_THRESHOLDS.bowelMovementHoursThreshold),
+          fluidIntakeMinMl: String(thresholds.fluidIntakeMinMl ?? DEFAULT_THRESHOLDS.fluidIntakeMinMl),
+          weightChangeKgThreshold: String(thresholds.weightChangeKgThreshold ?? DEFAULT_THRESHOLDS.weightChangeKgThreshold),
+          repositioningMaxHours: String(thresholds.repositioningMaxHours ?? DEFAULT_THRESHOLDS.repositioningMaxHours),
+        },
+      });
+    }
+    requestAnimationFrame(() => settingsRoot.current?.querySelector<HTMLElement>('.rule-row select, .rule-row input')?.focus());
   };
 
-  const handleResetTiers = () => {
-    onUpdateThresholds({
-      ...thresholds,
-      customCodeTiers: { ...DEFAULT_CODE_TIERS },
-    });
+  const restoreDraft = () => {
+    if (draft?.kind === 'rules') setDraft({ kind: 'rules', values: { ...draft.values, ...DEFAULT_CODE_TIERS } });
+    if (draft?.kind === 'thresholds') {
+      setDraft({
+        kind: 'thresholds',
+        values: {
+          bowelMovementHoursThreshold: String(DEFAULT_THRESHOLDS.bowelMovementHoursThreshold),
+          fluidIntakeMinMl: String(DEFAULT_THRESHOLDS.fluidIntakeMinMl),
+          weightChangeKgThreshold: String(DEFAULT_THRESHOLDS.weightChangeKgThreshold),
+          repositioningMaxHours: String(DEFAULT_THRESHOLDS.repositioningMaxHours),
+        },
+      });
+    }
+    setInvalidFields([]);
+    closeDialog();
   };
+
+  const finishEditing = () => {
+    setDraft(null);
+    setInvalidFields([]);
+    closeDialog();
+    requestAnimationFrame(() => editButtonRef.current?.focus());
+  };
+
+  const review = (trigger: HTMLElement) => {
+    if (!draft) return;
+    const changes: Change[] = [];
+    const patch: Partial<AlertThresholds> = {};
+    if (draft.kind === 'rules') {
+      const assignments = { ...thresholds.customCodeTiers };
+      for (const code of STOP_AND_WATCH_CODES) {
+        const before = currentTiers[code.id] ?? code.defaultTier;
+        const after = draft.values[code.id];
+        if (after !== 1 && after !== 2 && after !== 3) {
+          notify('Choose a priority for every rule.');
+          return;
+        }
+        if (before === after) continue;
+        assignments[code.id] = after;
+        changes.push({ name: code.shortLabel, before: tierText(before), after: tierText(after) });
+      }
+      if (changes.length) patch.customCodeTiers = assignments;
+    } else {
+      const invalid = metrics.filter(({ key }) => !Number.isFinite(Number(draft.values[key])) || Number(draft.values[key]) <= 0);
+      setInvalidFields(invalid.map(({ key }) => key));
+      if (invalid.length) {
+        notify('Enter a positive number for every threshold.');
+        document.getElementById('settings-' + invalid[0].key)?.focus();
+        return;
+      }
+      for (const { key, name, unit } of metrics) {
+        const before = thresholds[key] ?? DEFAULT_THRESHOLDS[key];
+        const after = Number(draft.values[key]);
+        if (before !== after) {
+          patch[key] = after;
+          changes.push({ name, before: before + ' ' + unit, after: after + ' ' + unit });
+        }
+      }
+    }
+    if (changes.length) openDialog({ kind: 'review', changes, patch }, trigger);
+    else notify('No changes to review.');
+  };
+
+  const row = (label: string, Icon: typeof Info, action: (trigger: HTMLButtonElement) => void,
+    value?: string, tone?: 'neutral' | 'amber', opensDialog = false) => (
+    <button type="button" className="setting" data-setting={label} aria-haspopup={opensDialog ? 'dialog' : undefined}
+      onClick={(event) => action(event.currentTarget)}>
+      <span className={'tile' + (tone ? ' ' + tone : '')}><Icon /></span>
+      <span className="name">{label}</span>
+      {value && <span className="value">{value}</span>}
+      <ChevronRight className="chev" />
+    </button>
+  );
+
+  const renderRules = () => tierOrder.map((tier) => {
+    const codes = STOP_AND_WATCH_CODES.filter((code) => (currentTiers[code.id] ?? code.defaultTier) === tier);
+    return codes.length > 0 && (
+      <section key={tier}>
+        <h2 className="group-label">{tierText(tier)}{draft ? ' · Current group' : ''}</h2>
+        <div className="cb-panel group">{codes.map((code) => (
+          <div className="rule-row" key={code.id} data-rule-id={code.id}>
+            <span className="code">{code.letter}</span>
+            <span className="name">{code.shortLabel}</span>
+            <button type="button" className="info" aria-label={'About ' + code.shortLabel} aria-haspopup="dialog"
+              onClick={(event) => openDialog({ kind: 'info', code }, event.currentTarget)}><Info /></button>
+            {draft?.kind === 'rules' ? (
+              <select className="cb-field" aria-label={'Priority for ' + code.shortLabel} value={draft.values[code.id]}
+                onChange={(event) => {
+                  const next = Number(event.target.value);
+                  if (next === 1 || next === 2 || next === 3) {
+                    setDraft({ kind: draft.kind, values: { ...draft.values, [code.id]: next } });
+                  }
+                }}>
+                {([1, 2, 3] as const).map((option) => <option key={option} value={option}>{tierText(option)}</option>)}
+              </select>
+            ) : <span className={'tier t' + tier}>{tierNames[tier]}</span>}
+          </div>
+        ))}</div>
+      </section>
+    );
+  });
+
+  const renderThresholds = () => (
+    <div className="cb-panel group">
+      {metrics.map(({ key, name, unit, ...metric }) => <div className="rule-row" key={key}>
+        <span className="name">
+          {draft?.kind === 'thresholds' ? <label htmlFor={'settings-' + key}>{name}</label> : name}
+          {'storedOnly' in metric && <small className="stored muted">Stored only</small>}
+        </span>
+        {draft?.kind === 'thresholds' ? <>
+          <input className="cb-field" id={'settings-' + key} type="number" inputMode="decimal" min="0" step="any"
+            value={draft.values[key]} aria-invalid={invalidFields.includes(key)}
+            onChange={(event) => {
+              setDraft({ kind: draft.kind, values: { ...draft.values, [key]: event.target.value } });
+              setInvalidFields((fields) => fields.filter((field) => field !== key));
+            }} />
+          <span className="muted">{unit}</span>
+        </> : <span className="value">{thresholds[key] ?? DEFAULT_THRESHOLDS[key]} {unit}</span>}
+      </div>)}
+    </div>
+  );
+
+  const modal = () => {
+    if (!dialog) return null;
+    let title: string;
+    let content: React.ReactNode;
+    let confirmLabel: string;
+    let confirm: () => void;
+    let cancelLabel = 'Cancel';
+    switch (dialog.kind) {
+      case 'pause':
+        title = 'Speech pause';
+        content = <>
+          <p className="muted">Wait this long during a pause before processing speech.</p>
+          <output htmlFor="settings-pause" className="pause-value">{pauseDraft.toFixed(1)} s</output>
+          <input id="settings-pause" aria-label="Speech pause in seconds" type="range" min="0.5" max="2" step="0.1"
+            value={pauseDraft} onChange={(event) => setPauseDraft(Number(event.target.value))} />
+          <div className="pause-ends muted"><span>0.5 s · Shorter</span><span>2.0 s · Longer</span></div>
+          <p className="muted">Sentence-ending punctuation starts processing immediately.</p>
+        </>;
+        confirmLabel = 'Save';
+        confirm = () => {
+          onUpdateThresholds({ ...thresholds, silenceBufferSeconds: pauseDraft });
+          closeDialog();
+          notify('Speech preference saved.');
+        };
+        break;
+      case 'discard-home':
+      case 'discard':
+        title = 'Discard draft?';
+        content = <p>Unsaved changes will be lost.</p>;
+        cancelLabel = 'Keep editing';
+        confirmLabel = 'Discard';
+        confirm = () => {
+          if (dialog.kind === 'discard-home') {
+            closeDialog();
+            navigate('home');
+          } else finishEditing();
+        };
+        break;
+      case 'restore':
+        title = 'Restore demo defaults?';
+        content = <p>This replaces the draft for this section with its original demo values. Review changes before applying.</p>;
+        confirmLabel = 'Restore draft';
+        confirm = restoreDraft;
+        break;
+      case 'review':
+        title = 'Review demo changes';
+        content = <>
+          <p className="muted">Changes apply to this browser’s demo configuration.</p>
+          {dialog.changes.map(({ name, before, after }) => (
+            <div className="diff" key={name}><strong>{name}</strong><span>{before} → {after}</span></div>
+          ))}
+        </>;
+        cancelLabel = 'Back';
+        confirmLabel = 'Apply demo changes';
+        confirm = () => {
+          onUpdateThresholds({ ...thresholds, ...dialog.patch });
+          finishEditing();
+          notify('Demo changes applied.');
+        };
+        break;
+      case 'print':
+        title = 'Print blank handoff sheet';
+        content = <p>Open the existing blank paper handoff in your browser’s print dialog.</p>;
+        confirmLabel = 'Print blank sheet';
+        confirm = () => {
+          closeDialog();
+          onPrintPaperFallback();
+        };
+        break;
+      case 'info':
+        title = dialog.code.shortLabel;
+        content = <><p>{dialog.code.plainLanguageDescription}</p>
+          <p className="muted">Rule ID: {dialog.code.id}</p>
+        </>;
+        confirmLabel = 'Done';
+        confirm = closeDialog;
+        break;
+    }
+    return <>
+      <h2 id="settings-modal-title">{title}</h2>
+      {content}
+      <div className="actions">
+        {dialog.kind !== 'info' && <Button onClick={closeDialog}>{cancelLabel}</Button>}
+        <Button variant="primary" onClick={confirm}>{confirmLabel}</Button>
+      </div>
+    </>;
+  };
+
+  const clinical = page === 'rules' || page === 'thresholds';
 
   return (
-    <div className="space-y-6">
-      {/* Settings Header */}
-      <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <Sliders className="w-5 h-5 text-teal-700" />
-            <h1 className="text-base font-bold text-slate-900 tracking-tight">
-              Settings & Clinical Thresholds
-            </h1>
-          </div>
-          <p className="text-xs text-slate-500 mt-1">
-            Configure deterministic rule thresholds, customize Stop & Watch severity tiers, review prototype architecture, and print official paper backups.
-          </p>
-        </div>
-
-        <button
-          onClick={onPrintPaperFallback}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer"
-        >
-          <Printer className="w-4 h-4" />
-          <span>Print Blank Paper Sheet (Official Fallback)</span>
-        </button>
-      </div>
-
-      {/* Stop & Watch Severity Settings Editor */}
-      <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-xs space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
-          <div>
-            <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-              <Sliders className="w-4 h-4 text-teal-700" />
-              <span>Stop and Watch Severity Tier Assignments</span>
-            </h2>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Customize the severity tier assigned to each of the 12 INTERACT™ warning codes.
-            </p>
-          </div>
-
-          <button
-            onClick={handleResetTiers}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-semibold cursor-pointer transition-colors"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset to Recommended Defaults</span>
-          </button>
-        </div>
-
-        {/* Prototype Proposal Warning Notice */}
-        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs space-y-1">
-          <p className="font-semibold text-amber-950 flex items-center gap-1.5">
-            <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
-            <span>Clinical Proposal Notice:</span>
-          </p>
-          <p className="text-amber-900 leading-relaxed text-[11px] pl-5.5">
-            Severity tiers are a prototype proposal and must be reviewed and approved by Schlegel Villages nursing leadership. They are not part of the official INTERACT tool. All alerts and tiers are decision support only. The charge nurse makes all clinical decisions.
-          </p>
-        </div>
-
-        {/* 12 Code Tier Configuration Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
-          {STOP_AND_WATCH_CODES.map((c: StopAndWatchCodeConfig) => {
-            const currentTier = (currentCodeTiers[c.id] ?? c.defaultTier) as SeverityTier;
-            const tierMeta = TIER_METADATA[currentTier];
-
-            return (
-              <div
-                key={c.id}
-                className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2 text-xs flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-bold text-slate-900 text-xs">
-                      {c.letter} ({c.shortLabel})
-                    </span>
-                    <span
-                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border ${tierMeta.badgeBg} ${tierMeta.badgeColor} ${tierMeta.badgeBorder}`}
-                    >
-                      {currentTier === 3 ? (
-                        <OctagonAlert className="w-3 h-3 text-purple-700" />
-                      ) : currentTier === 2 ? (
-                        <AlertTriangle className="w-3 h-3 text-amber-700" />
-                      ) : (
-                        <Info className="w-3 h-3 text-sky-700" />
-                      )}
-                      <span>Tier {currentTier}</span>
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-slate-600 mt-1 line-clamp-2">
-                    {c.plainLanguageDescription}
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t border-slate-200 flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-medium text-slate-500">Tier:</span>
-                  <select
-                    value={currentTier}
-                    onChange={(e) =>
-                      handleCodeTierChange(c.id, Number(e.target.value) as 1 | 2 | 3)
-                    }
-                    className="bg-white border border-slate-300 rounded px-2 py-1 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-teal-700 cursor-pointer"
-                  >
-                    <option value={1}>Tier 1 – Monitor (Blue)</option>
-                    <option value={2}>Tier 2 – Report This Shift (Amber)</option>
-                    <option value={3}>Tier 3 – Report Now (Purple)</option>
-                  </select>
-                </div>
+    <div className="carebridge-settings" ref={settingsRoot}>
+      {page === 'home' ? (
+        <>
+          <PageHeader ref={headingRef} title="Settings" subtitle="Preferences and prototype configuration" />
+          <section aria-labelledby="settings-preferences">
+            <h2 className="group-label" id="settings-preferences">Preferences</h2>
+            <div className="cb-panel group">{row('Speech pause', Mic, (trigger) => {
+              setPauseDraft(speechPause);
+              openDialog({ kind: 'pause' }, trigger);
+            }, speechPause.toFixed(1) + ' s', undefined, true)}</div>
+          </section>
+          <section aria-labelledby="settings-clinical">
+            <h2 className="group-label" id="settings-clinical">Clinical configuration</h2>
+            <div className="cb-panel group">
+              {row('Stop & Watch rules', ShieldCheck, () => navigate('rules'), STOP_AND_WATCH_CODES.length + ' rules', 'amber')}
+              {row('Alert thresholds', SlidersVertical, () => navigate('thresholds'), metrics.length + ' thresholds', 'neutral')}
+            </div>
+            <p className="muted group-note">Prototype rules · Not clinically approved</p>
+          </section>
+          <section aria-labelledby="settings-support">
+            <h2 className="group-label" id="settings-support">Support</h2>
+            <div className="cb-panel group">
+              {row('Print blank handoff sheet', Printer, (trigger) => openDialog({ kind: 'print' }, trigger), undefined, 'neutral', true)}
+              {row('Privacy & safety', Lock, () => navigate('privacy'), undefined, 'neutral')}
+              {row('About CareBridge', Info, () => navigate('about'), undefined, 'neutral')}
+            </div>
+          </section>
+          <WorkspaceFooter><span>CareBridge · Prototype</span></WorkspaceFooter>
+        </>
+      ) : (
+        <>
+          <button type="button" className="back" onClick={(event) => {
+            if (draft) openDialog({ kind: 'discard-home' }, event.currentTarget);
+            else navigate('home');
+          }}><ChevronLeft /> Settings</button>
+          <PageHeader ref={headingRef} title={pageTitle} className="detail-head"
+            actions={clinical && !draft && <Button ref={editButtonRef} onClick={edit}>Edit demo rules</Button>} />
+          {clinical ? <>
+            <div className="notice"><TriangleAlert /><span>
+              Prototype configuration only. {page === 'rules'
+                ? 'These tiers are separate from official INTERACT classifications. '
+                : 'These values are not approved clinical limits. '}
+              Clinical leadership approval is required before real use.
+            </span></div>
+            {page === 'rules' ? renderRules() : renderThresholds()}
+            {draft && <div className="actions">
+              <Button variant="quiet" onClick={(event) => openDialog({ kind: 'restore' }, event.currentTarget)}>Restore demo defaults</Button>
+              <div className="actions-right">
+                <Button onClick={(event) => openDialog({ kind: 'discard' }, event.currentTarget)}>Cancel</Button>
+                <Button variant="primary" onClick={(event) => review(event.currentTarget)}>Review changes</Button>
               </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Deterministic Rule Thresholds Panel */}
-      <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-xs space-y-4">
-        <div className="border-b border-slate-100 pb-2">
-          <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-            Deterministic Decision Support Thresholds
-          </h2>
-          <p className="text-[11px] text-slate-500 mt-0.5">
-            Alerts in this application are deterministic rules in code, not AI guesses. Adjust threshold values for clinical protocol compliance.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Bowel Movement Alert Hours */}
-          <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1.5">
-            <label className="block text-xs font-semibold text-slate-700">
-              No BM Alert (Hours)
-            </label>
-            <input
-              type="number"
-              value={thresholds.bowelMovementHoursThreshold}
-              onChange={(e) =>
-                handleThresholdChange('bowelMovementHoursThreshold', Number(e.target.value))
-              }
-              className="w-full font-mono text-xs p-2 bg-white border border-slate-300 rounded text-slate-900 focus:outline-none"
-            />
-            <span className="text-[10px] text-slate-500 block">
-              Default 48h (triggers warning before 72h / 3 days Code N).
-            </span>
-          </div>
-
-          {/* Fluid Intake Minimum mL */}
-          <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1.5">
-            <label className="block text-xs font-semibold text-slate-700">
-              Daily Min Fluids (mL)
-            </label>
-            <input
-              type="number"
-              value={thresholds.fluidIntakeMinMl}
-              onChange={(e) =>
-                handleThresholdChange('fluidIntakeMinMl', Number(e.target.value))
-              }
-              className="w-full font-mono text-xs p-2 bg-white border border-slate-300 rounded text-slate-900 focus:outline-none"
-            />
-            <span className="text-[10px] text-slate-500 block">
-              Default 1000 mL (flags under-hydration for next shift).
-            </span>
-          </div>
-
-          {/* Weight Change Kg */}
-          <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1.5">
-            <label className="block text-xs font-semibold text-slate-700">
-              Weight Change Alert (kg)
-            </label>
-            <input
-              type="number"
-              step="0.5"
-              value={thresholds.weightChangeKgThreshold}
-              onChange={(e) =>
-                handleThresholdChange('weightChangeKgThreshold', Number(e.target.value))
-              }
-              className="w-full font-mono text-xs p-2 bg-white border border-slate-300 rounded text-slate-900 focus:outline-none"
-            />
-            <span className="text-[10px] text-slate-500 block">
-              Default 2.0 kg between entries (triggers Code W).
-            </span>
-          </div>
-
-          {/* Repositioning Max Hours */}
-          <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1.5">
-            <label className="block text-xs font-semibold text-slate-700">
-              Repositioning Due (Hours)
-            </label>
-            <input
-              type="number"
-              step="0.5"
-              value={thresholds.repositioningMaxHours}
-              onChange={(e) =>
-                handleThresholdChange('repositioningMaxHours', Number(e.target.value))
-              }
-              className="w-full font-mono text-xs p-2 bg-white border border-slate-300 rounded text-slate-900 focus:outline-none"
-            />
-            <span className="text-[10px] text-slate-500 block">
-              Default 2.0 hours (Q2H standard for pressure injury relief).
-            </span>
-          </div>
-
-          {/* Voice Silence Buffer (0.5s to 2.0s) */}
-          <div className="bg-slate-50 p-3 rounded-lg border border-teal-200 bg-teal-50/30 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="block text-xs font-semibold text-teal-950">
-                Voice Silence Buffer (Seconds)
-              </label>
-              <span className="text-xs font-mono font-bold text-teal-800">
-                {(thresholds.silenceBufferSeconds ?? 0.8).toFixed(1)}s
-              </span>
-            </div>
-            <input
-              type="range"
-              min="0.5"
-              max="2.0"
-              step="0.1"
-              value={thresholds.silenceBufferSeconds ?? 0.8}
-              onChange={(e) =>
-                handleThresholdChange('silenceBufferSeconds', parseFloat(e.target.value))
-              }
-              className="w-full accent-teal-700 cursor-pointer"
-            />
-            <div className="flex justify-between text-[10px] text-slate-500">
-              <span>0.5s (Fastest)</span>
-              <span>Default 0.8s</span>
-              <span>2.0s (Deliberate)</span>
-            </div>
-            <span className="text-[10px] text-teal-800 block">
-              Silence pause before speech is buffered and sent for extraction. Sentence-ending punctuation triggers immediately.
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Privacy, Security & Architecture Section */}
-      <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-xs space-y-4">
-        <div className="border-b border-slate-100 pb-2 flex items-center gap-2">
-          <Shield className="w-4 h-4 text-teal-700" />
-          <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-            About this Prototype · Privacy, Security & Operational Architecture
-          </h2>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-          <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
-            <div className="font-bold text-slate-900 flex items-center gap-1.5">
-              <Lock className="w-3.5 h-3.5 text-teal-700" />
-              <span>Transmitter-Only Architecture (No Device Storage)</span>
-            </div>
-            <p className="text-slate-600 leading-relaxed text-[11px]">
-              Runs on facility-managed laptops, never personal devices. The laptop acts strictly as a transmitter, never as long-term storage. Audio recordings are never stored; audio streams are converted to text and immediately discarded.
-            </p>
-          </div>
-
-          <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
-            <div className="font-bold text-slate-900 flex items-center gap-1.5">
-              <Cloud className="w-3.5 h-3.5 text-teal-700" />
-              <span>Canadian Data Residency & Role-Based Access</span>
-            </div>
-            <p className="text-slate-600 leading-relaxed text-[11px]">
-              In production, data resides inside Canadian cloud facilities (e.g., Montreal/Toronto GCP regions) behind healthcare facility VPN and strict role-based access control (RBAC). In this prototype, mock in-memory storage is used.
-            </p>
-          </div>
-
-          <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
-            <div className="font-bold text-slate-900 flex items-center gap-1.5">
-              <FileCheck className="w-3.5 h-3.5 text-teal-700" />
-              <span>Mandatory Human Review & Confirmation</span>
-            </div>
-            <p className="text-slate-600 leading-relaxed text-[11px]">
-              The AI acts strictly as a documentation assistant and never makes clinical decisions. Because transcription or translation nuances occur, every AI-populated field is tagged &ldquo;Pending Confirmation&rdquo; until reviewed and confirmed by staff.
-            </p>
-          </div>
-
-          <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
-            <div className="font-bold text-slate-900 flex items-center gap-1.5">
-              <Printer className="w-3.5 h-3.5 text-teal-700" />
-              <span>Official Physical Paper Fallback</span>
-            </div>
-            <p className="text-slate-600 leading-relaxed text-[11px]">
-              If network connectivity or hardware fails, staff have instant access to print the identical physical paper shift handoff sheet. The workflow maintains 100% parity between digital and paper tools.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Future Phase Card */}
-      <div className="bg-slate-100/80 border border-slate-200 rounded-lg p-5 text-xs space-y-2 opacity-85">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-slate-500" />
-            <span className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">
-              Future Phase Roadmap (Concept Demonstration)
-            </span>
-          </div>
-          <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-200 text-slate-600 px-2 py-0.5 rounded">
-            Coming Soon · Phase 2
-          </span>
-        </div>
-        <p className="text-slate-600 leading-relaxed">
-          <strong>Historical Contradiction Detection & Proactive Reminders:</strong> Future integration with the facility&rsquo;s PointClickCare EMR data lake will automatically compare current spoken reports against the resident&rsquo;s 30-day baseline. If a resident is noted as &ldquo;ate normally&rdquo; while meal tracking logs &lt;25% for 3 consecutive days, the assistant will surface a gentle validation query to ensure continuity of care.
-        </p>
-      </div>
+            </div>}
+          </> : (page === 'privacy' || page === 'about') && <div className="group information">
+            {information[page].map(([title, copy]) => <section className="detail-text" key={title}>
+              <h2>{title}</h2><p className="muted">{copy}</p>
+            </section>)}
+          </div>}
+        </>
+      )}
+      <dialog className="cb-motion-dialog" ref={dialogRef} aria-labelledby="settings-modal-title" onClose={() => {
+        setDialog(null);
+        const target = openerRef.current;
+        if (target?.isConnected) target.focus();
+      }}>{modal()}</dialog>
+      <StatusToast>{toast}</StatusToast>
     </div>
   );
 };
-

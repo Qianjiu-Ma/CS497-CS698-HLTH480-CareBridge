@@ -1,0 +1,99 @@
+:root {
+  --cb-motion-feedback: 100ms;
+  --cb-motion-state: 140ms;
+  --cb-motion-layer: 180ms;
+  --cb-motion-settle: cubic-bezier(.18, .72, .28, 1);
+  --cb-motion-change: cubic-bezier(.4, 0, .25, 1);
+}
+
+.cb-app :is(.cb-button, .cb-nav-tabs button, .cb-roster-list button,
+  .clinical-review-row, .clinical-review-tabs button, .incoming-workspace .task .details,
+  .incoming-workspace .concern, .emr-archive .record, .carebridge-settings .setting) {
+  transition: background-color var(--cb-motion-feedback) var(--cb-motion-change);
+}
+
+/* Press and clinical state are readable on the same frame as the input. */
+.cb-app :is(button, summary):not(:disabled):active {
+  transition-duration: 0s;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 26%, transparent);
+}
+
+.cb-app .cb-nav-tabs [aria-current='page'],
+.cb-app .cb-roster-list [aria-current='true'],
+.cb-app .clinical-review-tabs [aria-pressed='true'] {
+  transition-duration: 0s;
+}
+
+.cb-disclosure-icon {
+  transition: transform var(--cb-motion-state) var(--cb-motion-settle);
+}
+
+[aria-expanded='true'] > .cb-disclosure-icon {
+  transform: rotate(var(--cb-disclosure-angle, 180deg));
+}
+
+.cb-completed-disclosure { --cb-disclosure-angle: 90deg; }
+
+.cb-progress-fill {
+  width: 100%;
+  transform-origin: left center;
+  transition: transform var(--cb-motion-state) var(--cb-motion-settle);
+}
+
+.cb-audio-meter span {
+  height: 100%;
+  transform-origin: center bottom;
+  transition: transform var(--cb-motion-feedback) linear;
+}
+
+@media screen and (prefers-reduced-motion: no-preference) {
+  .cb-motion-popover {
+    animation: cb-popover-in var(--cb-motion-state) var(--cb-motion-settle);
+  }
+
+  .cb-motion-dialog[open] {
+    animation: cb-dialog-in var(--cb-motion-layer) var(--cb-motion-settle);
+  }
+
+  .cb-motion-drawer[open] {
+    animation: cb-drawer-in var(--cb-motion-layer) var(--cb-motion-settle);
+  }
+
+  .cb-toast {
+    animation: cb-toast-in var(--cb-motion-state) var(--cb-motion-settle);
+  }
+
+  .cb-pending {
+    animation: cb-spin 900ms linear 4;
+  }
+}
+
+@keyframes cb-popover-in {
+  from { opacity: .96; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes cb-dialog-in {
+  from { opacity: .96; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes cb-drawer-in {
+  from { transform: translateX(12px); }
+  to { transform: translateX(0); }
+}
+
+@keyframes cb-toast-in {
+  from { translate: 0 4px; }
+  to { translate: 0 0; }
+}
+
+@keyframes cb-spin {
+  to { transform: rotate(1turn); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cb-audio-meter {
+    display: none;
+  }
+}
