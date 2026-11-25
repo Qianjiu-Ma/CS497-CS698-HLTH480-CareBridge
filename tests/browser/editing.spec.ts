@@ -1,5 +1,10 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import ar from '../../src/locales/ar.json' with { type: 'json' };
+
+async function chooseEditorSection(dialog: Locator, label: string, trigger = 'Edit sections') {
+  await dialog.getByRole('button', { name: trigger, exact: true }).click();
+  await dialog.getByRole('menuitemradio', { name: label, exact: true }).click();
+}
 
 const stored = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('carebridge_handoff_state_v1')!));
 
@@ -48,17 +53,17 @@ test('mobile draft survives reload and requires explicit discard', async ({ page
   await page.goto('/');
   const open = page.getByRole('button', { name: 'Edit resident', exact: true });
   const dialog = page.getByRole('dialog', { name: 'Edit resident' });
-  const selected = dialog.getByRole('button', { name: 'Completed care' });
+  const chooseCare = () => chooseEditorSection(dialog, 'Completed care');
   const care = dialog.getByRole('textbox', { name: 'Care provided' });
   await open.click();
   await expect(dialog).toHaveCSS('width', '320px');
   await expect(dialog).toHaveCSS('height', '660px');
-  await selected.click();
+  await chooseCare();
   const original = await care.inputValue();
   await care.fill('Fictional unsaved care');
   await page.reload();
   await open.click();
-  await selected.click();
+  await chooseCare();
   await expect(care).toHaveValue('Fictional unsaved care');
   await page.keyboard.press('Escape');
   const keepEditing = dialog.getByRole('button', { name: 'Keep editing' });
@@ -69,7 +74,7 @@ test('mobile draft survives reload and requires explicit discard', async ({ page
   await dialog.getByRole('button', { name: 'Discard', exact: true }).click();
   await expect(open).toBeFocused();
   await open.click();
-  await selected.click();
+  await chooseCare();
   await expect(care).toHaveValue(original);
 });
 
@@ -127,7 +132,7 @@ test('nurse notification requires initials and an untouched pending entry stays 
   await page.getByRole('button', { name: 'Edit resident', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Edit resident' });
   await expect(dialog).toContainText('104');
-  await dialog.getByRole('button', { name: 'Health changes' }).click();
+  await dialog.getByRole('button', { name: 'Nurse notification', exact: true }).click();
   await dialog.getByRole('checkbox', { name: 'Told Charge Nurse' }).check();
   const save = dialog.getByRole('button', { name: 'Save changes' });
   const initials = dialog.getByRole('textbox', { name: 'Charge nurse initials' });
@@ -157,7 +162,7 @@ test('the resident editor supports RTL, safe areas and a narrow viewport', async
   await open.click();
   const dialog = page.getByRole('dialog', { name: ar['Edit resident'] });
   await expect(dialog).toHaveCSS('padding-bottom', '24px');
-  await dialog.getByRole('button', { name: ar['Completed care'] }).click();
+  await chooseEditorSection(dialog, ar['Completed care'], ar['Edit sections']);
   await expect(dialog.getByRole('textbox', { name: ar['Care provided'] })).toBeVisible();
   expect(await dialog.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0);
   await page.keyboard.press('Escape');

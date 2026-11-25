@@ -1,7 +1,7 @@
 import { l10n } from '../utils/localization';
 import { AlertThresholds, HandoffRow } from '../types/handoff';
 import { useEffect, useId, useRef, useState } from 'react';
-import { Check, ChevronRight, CircleAlert, Users, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, CircleAlert, Users, X } from 'lucide-react';
 import { SeverityTier } from '../data/stopAndWatchCodes';
 import { getResidentStatus } from '../utils/residentStatus';
 import { useCompactLayout } from '../utils/useCompactLayout';
@@ -16,6 +16,25 @@ interface ResidentRibbonProps {
 
 }
 
+export function ResidentStep({ direction, resident, showRoom, onSelect }: {
+  direction: 'previous' | 'next';
+  resident?: HandoffRow;
+  showRoom?: boolean;
+  onSelect: (room: string) => void;
+}) {
+  const previous = direction === 'previous';
+  const Icon = previous ? ChevronLeft : ChevronRight;
+  const label = resident
+    ? l10n(previous ? 'Previous: Room {{p1}} ({{p2}})' : 'Next: Room {{p1}} ({{p2}})', { p1: resident.room, p2: resident.residentName })
+    : l10n(previous ? 'Prev' : 'Next');
+  return <Button className="cb-resident-step" aria-label={label} title={label} disabled={!resident}
+    onClick={() => { if (resident) onSelect(resident.room); }}>
+    {previous && <Icon aria-hidden="true" />}
+    {showRoom && resident && <bdi className="tabular-nums">{resident.room}</bdi>}
+    {!previous && <Icon aria-hidden="true" />}
+  </Button>;
+}
+
 export const ResidentRibbon = ({ rows, selectedRoom, onSelectResident, customCodeTiers, thresholds }: ResidentRibbonProps) => {
   const compact = useCompactLayout();
   const [choosing, setChoosing] = useState(false);
@@ -23,7 +42,8 @@ export const ResidentRibbon = ({ rows, selectedRoom, onSelectResident, customCod
   const rail = useRef<HTMLElement>(null);
   const residents = rows.map((row) => ({ row, status: getResidentStatus(row, thresholds, customCodeTiers) }));
   const pending = residents.filter(({ status }) => status.hasPending).length;
-  const selected = rows.find((row) => row.room === selectedRoom);
+  const selectedIndex = rows.findIndex((row) => row.room === selectedRoom);
+  const selected = rows[selectedIndex];
 
   useEffect(() => {
     if (compact || !choosing) return;
@@ -67,6 +87,8 @@ export const ResidentRibbon = ({ rows, selectedRoom, onSelectResident, customCod
         <h2>{l10n("Residents ·") + " "}{rows.length}{pending > 0 && <small>{pending}{" " + l10n("to review")}</small>}</h2>
         {choices}
       </aside>
+      <div className="cb-mobile-resident-nav">
+      <ResidentStep direction="previous" resident={rows[selectedIndex - 1]} onSelect={choose} />
       <Button id={pickerId} className="cb-resident-picker" aria-haspopup="dialog"
         aria-label={l10n('Choose resident')} aria-describedby={pickerId + '-current'} onClick={(event) => {
           event.currentTarget.focus({ preventScroll: true });
@@ -79,8 +101,10 @@ export const ResidentRibbon = ({ rows, selectedRoom, onSelectResident, customCod
             ? l10n('{{resident}} · Room {{room}}', { resident: selected.residentName, room: selected.room })
             : l10n('Overview')}</strong>
         </span>
-        <ChevronRight aria-hidden="true" />
+        <ChevronRight className="cb-resident-picker-arrow" aria-hidden="true" />
       </Button>
+      <ResidentStep direction="next" resident={selected && rows[selectedIndex + 1]} onSelect={choose} />
+      </div>
       <ControlledDialog open={compact && choosing} onDismiss={() => setChoosing(false)}
         onAfterClose={() => {
           if (!compact) rail.current?.querySelector<HTMLButtonElement>('[aria-current="true"]')?.focus({ preventScroll: true });

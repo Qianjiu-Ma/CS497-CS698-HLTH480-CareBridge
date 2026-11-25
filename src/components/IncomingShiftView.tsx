@@ -55,7 +55,6 @@ export const IncomingShiftView: React.FC<IncomingShiftViewProps> = ({
     [rows, escalations, thresholds, interfaceLanguage]);
   const attention = residents.filter((resident) => resident.rank > 0).sort((a, b) => b.rank - a.rank);
   const roster = [...residents].sort((a, b) => a.row.room.localeCompare(b.row.room, undefined, { numeric: true }));
-  const priorityCount = attention.filter(({ status }) => status.isUrgent).length;
   const completed = tasks.filter((task) => task.done);
   const remaining = tasks.filter((task) => !task.done);
   const unitNote = anythingElse?.trim();
@@ -301,10 +300,6 @@ export const IncomingShiftView: React.FC<IncomingShiftViewProps> = ({
             <Users />{" " + l10n("All residents")}
           </Button>
         </>} />
-      <div className="cb-panel cb-shift-glance">
-        <span>{l10n('{{completed}} of {{total}} tasks done', { completed: completed.length, total: tasks.length })}</span>
-        <span className={priorityCount ? 'cb-urgent' : undefined}>{l10n('Priority attention: {{count}}', { count: priorityCount })}</span>
-      </div>
       {unitNote && <button className="unit" type="button" aria-haspopup="dialog"
         onClick={(event) => showDetails({ kind: 'unit' }, event.currentTarget)}>
         <BatteryLow />
@@ -352,7 +347,8 @@ export const IncomingShiftView: React.FC<IncomingShiftViewProps> = ({
           {l10n("Reset demo")}
         </Button>
       </WorkspaceFooter>
-      <dialog onCancel={cancelDialog} className={'cb-motion-dialog ' + (details?.kind === 'reset' ? 'cb-adaptive-sheet' : 'cb-adaptive-detail')} ref={dialog} aria-labelledby="incoming-dialog-title" onClose={() => {
+      <dialog onCancel={cancelDialog} className={'cb-motion-dialog ' + (details?.kind === 'task' || details?.kind === 'unit' || details?.kind === 'reset'
+        ? 'cb-adaptive-sheet incoming-sheet' : 'cb-adaptive-detail')} ref={dialog} aria-labelledby="incoming-dialog-title" onClose={() => {
         setDetails(null);
         setCodeId(null);
         returnFocus();

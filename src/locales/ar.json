@@ -475,6 +475,7 @@
   "Reopen for monitoring": "إعادة فتح للمراقبة",
   "Reopened: {{task}}. Clinical concerns unchanged.": "أعيد الافتتاح: {{task}}. المخاوف السريرية دون تغيير.",
   "Replace all bracketed placeholders ([...]) with verified bedside findings before saving.": "استبدل جميع العناصر النائبة بين قوسين ([...]) بنتائج تم التحقق منها بجانب السرير قبل الحفظ.",
+  "Report": "التقرير",
   "Report · All residents": "بلاغ · جميع المقيمين",
   "Report · Room {{room}}": "التبليغ · الغرفة {{room}}",
   "Report now": "أبلغ الآن",

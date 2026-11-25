@@ -33,12 +33,13 @@ type ArchiveDialog =
 
 type ArchiveField = (text: string | undefined) => React.ReactNode;
 
-function Detail({ title, icon: Icon, children }: {
+function Detail({ title, icon: Icon, children, sectionId }: {
+  sectionId?: string;
   title: string;
   icon: typeof FileText;
   children: React.ReactNode;
 }) {
-  return <section className="detail"><h3><Icon /> {title}</h3>{children}</section>;
+  return <section id={sectionId} tabIndex={sectionId ? -1 : undefined} className="detail"><h3><Icon /> {title}</h3>{children}</section>;
 }
 
 function ActivityLog({ record }: { record: EMRRecord }) {
@@ -323,8 +324,16 @@ export const EmrView: React.FC<EmrViewProps> = ({ records, interfaceLanguage = '
         title = 'Activity log';
         body = <ActivityLog record={record} />;
         break;
-      case 'full':
+      case 'full': {
         title = 'Full shift record';
+        const sections = [
+          ...(record.rows.length ? [{ key: 'residents', label: 'Resident documentation' }] : []),
+          { key: 'unit', label: 'Unit note' },
+          { key: 'transcript', label: 'Original transcript' },
+          ...(record.translatedTranscript ? [{ key: 'translation', label: 'Recorded translation · Verify against the original' }] : []),
+          ...(record.escalations?.length ? [{ key: 'escalations', label: 'Archived escalations' }] : []),
+          { key: 'activity', label: 'Activity log' },
+        ];
         body = <>
           <div className="detail">
             <div className="archive-buttons">
@@ -341,25 +350,35 @@ export const EmrView: React.FC<EmrViewProps> = ({ records, interfaceLanguage = '
               {record.overrideReason && <><dt>{l10n("Override reason")}</dt><dd>{record.overrideReason}</dd></>}
             </dl>
           </div>
+          {compact && <nav className="archive-index" aria-label={l10n(title)}>
+            {sections.map(({ key, label }) => <Button key={key} onClick={() => {
+              const section = dialog.current?.querySelector<HTMLElement>('#archive-section-' + key);
+              if (!section) return;
+              if (section instanceof HTMLDetailsElement) section.open = true;
+              (section.querySelector('summary') || section).focus({ preventScroll: true });
+              section.scrollIntoView({ block: 'start', behavior: 'instant' });
+            }}>{l10n(label)}<ChevronRight className="cb-trailing-chevron" aria-hidden="true" /></Button>)}
+          </nav>}
           <FullShiftTable record={record} field={field} language={interfaceLanguage} />
-          {record.rows.length > 0 && <details className="detail cb-archive-documentation" open={compact || undefined}>
+          {record.rows.length > 0 && <details id="archive-section-residents" className="detail cb-archive-documentation" open={compact || undefined}>
             <summary>{l10n("Resident documentation")}</summary>
             {record.rows.map((row) => <details className="resident-documentation" key={row.room}>
               <summary>{row.residentName}{" " + l10n("· Room") + " "}{row.room}</summary>
               <ResidentDetails record={record} row={row} field={field} language={interfaceLanguage} />
             </details>)}
           </details>}
-          <Detail title={l10n("Unit note")} icon={MessageSquareText}><p>{field(record.anythingElse)}</p></Detail>
-          <Detail title={l10n("Original transcript")} icon={Mic}><p>{record.rawTranscript ? <ClinicalText text={record.rawTranscript} source={record.transcriptLanguage} /> : l10n('Not recorded')}</p></Detail>
-          {record.translatedTranscript && <Detail title={l10n('Recorded translation · Verify against the original')} icon={MessageSquareText}><p>{record.translatedTranscript}</p></Detail>}
-          {!!record.escalations?.length && <Detail title={l10n("Archived escalations")} icon={AlertCircle}>
+          <Detail sectionId="archive-section-unit" title={l10n("Unit note")} icon={MessageSquareText}><p>{field(record.anythingElse)}</p></Detail>
+          <Detail sectionId="archive-section-transcript" title={l10n("Original transcript")} icon={Mic}><p>{record.rawTranscript ? <ClinicalText text={record.rawTranscript} source={record.transcriptLanguage} /> : l10n('Not recorded')}</p></Detail>
+          {record.translatedTranscript && <Detail sectionId="archive-section-translation" title={l10n('Recorded translation · Verify against the original')} icon={MessageSquareText}><p>{record.translatedTranscript}</p></Detail>}
+          {!!record.escalations?.length && <Detail sectionId="archive-section-escalations" title={l10n("Archived escalations")} icon={AlertCircle}>
             <ul className="detail-list">{record.escalations.map((item) => <li key={item.id}>
               <strong>{item.residentName}{" " + l10n("· Room") + " "}{item.room}</strong><p>{field(item.note)}</p><p>{archivedEscalationLines(item).slice(1).join("\n")}</p>
             </li>)}</ul>
           </Detail>}
-          <Detail title={l10n("Activity log")} icon={History}><ActivityLog record={record} /></Detail>
+          <Detail sectionId="archive-section-activity" title={l10n("Activity log")} icon={History}><ActivityLog record={record} /></Detail>
         </>;
         break;
+      }
     }
     return <>
       <div className="modalhead cb-adaptive-head">

@@ -475,6 +475,7 @@
   "Reopen for monitoring": "重新开放进行监控",
   "Reopened: {{task}}. Clinical concerns unchanged.": "重新开放：{{task}}。临床关注点没有改变。",
   "Replace all bracketed placeholders ([...]) with verified bedside findings before saving.": "在保存之前，将所有括号内的占位符 ([...]) 替换为经过验证的床边检查结果。",
+  "Report": "交接报告",
   "Report · All residents": "举报·全体居民",
   "Report · Room {{room}}": "举报·房间{{room}}",
   "Report now": "立即举报",

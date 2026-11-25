@@ -1,5 +1,6 @@
 import { Info, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
+import { useCompactLayout } from '../utils/useCompactLayout';
 import { QUICK_ADD_CARE_CHIPS } from '../data/residentCarePhrases';
 import { getCodeConfig, getTranslatedStopAndWatchLabel, STOP_AND_WATCH_CONFIG, TIER_METADATA } from '../data/stopAndWatchCodes';
 import type { AlertThresholds, CareRequirementCategory, HandoffRow } from '../types/handoff';
@@ -13,7 +14,7 @@ import { getStopAndWatchIcon, StopAndWatchDetailModal } from './StopAndWatchIcon
 import { Button, ControlledDialog } from './WorkspaceUi';
 
 const sections = {
-  metrics: 'Measurements', care: 'Completed care', flags: 'Health changes', note: 'Observations', next: 'Next shift',
+  metrics: 'Measurements', care: 'Completed care', flags: 'Health changes', notification: 'Nurse notification', note: 'Observations', next: 'Next shift',
 } as const;
 export type ResidentSection = keyof typeof sections;
 export type OpenResidentEditor = (room: string, section: ResidentSection, trigger: HTMLElement, changeNote?: boolean) => void;
@@ -70,6 +71,8 @@ export function ResidentEditor({ row, initialSection, editChangeNote, staffStamp
   onSave: (patch: Partial<HandoffRow>) => void;
   onClose: () => void;
 }) {
+  const compact = useCompactLayout();
+  const sectionKeys = Object.keys(sections) as ResidentSection[];
   const latest = readFields(row);
   const { original, draft, dirty, change, clear } = useHandoffEditorDraft('resident:' + row.room, latest);
   const [section, setSection] = useState(initialSection);
@@ -105,7 +108,7 @@ export function ResidentEditor({ row, initialSection, editChangeNote, staffStamp
     const invalid = metricNames.find((field) => changed(field) && !Number.isFinite(readNumber(draft[field]) ?? 0));
     if (invalid) return reject(invalid, 'metrics', 'Enter a non-negative number.');
     if ((changed('notified') || changed('initials')) && draft.notified && !draft.initials.trim()) {
-      return reject('initials', 'flags', 'Enter nurse initials after confirming notification.');
+      return reject('initials', 'notification', 'Enter nurse initials after confirming notification.');
     }
 
     const conflict = (Object.keys(original) as (keyof Fields)[]).some((key) => changed(key) &&
@@ -175,14 +178,17 @@ export function ResidentEditor({ row, initialSection, editChangeNote, staffStamp
   }
 
   return <>
-    <FocusedEditor title={l10n('Edit resident')} fullScreen dirty={dirty} activeSection={section} onClose={onClose}
+    <FocusedEditor title={l10n('Edit resident')} fullScreen={initialSection !== 'notification' || section !== 'notification'} dirty={dirty} activeSection={section} onClose={onClose}
       subtitle={<><bdi>{row.residentName}</bdi> {l10n('· Room')} <bdi>{row.room}</bdi></>}
       onSave={save} onDiscard={clear}
-      sections={<div role="group" aria-label={l10n('Edit sections')} className="cb-editor-sections">
-        {(Object.keys(sections) as ResidentSection[]).map((key) => <Button key={key} variant="quiet"
-          aria-pressed={key === section} onClick={() => setSection(key)}>{l10n(sections[key])}</Button>)}
+      sections={<div className="cb-editor-sections" role="group" aria-label={l10n('Edit sections')}>
+        {compact
+          ? <SelectPopover label={l10n('Edit sections')} value={section} onChange={setSection}
+              options={sectionKeys.map((value) => ({ value, label: l10n(sections[value]) }))} />
+          : sectionKeys.map((key) => <Button key={key} variant="quiet" aria-pressed={key === section}
+              onClick={() => setSection(key)}>{l10n(sections[key])}</Button>)}
       </div>}>
-      <h3>{l10n(sections[section])}</h3>
+      {!compact && <h3>{l10n(sections[section])}</h3>}
       {error && <p id="cb-resident-edit-error" className="cb-editor-error" role="alert">{l10n(error)}</p>}
       {section === 'metrics' && <div className="cb-editor-grid">
         {metricField('fluidIntakeMl', measurements.fluidIntakeMl, true)}
@@ -200,7 +206,7 @@ export function ResidentEditor({ row, initialSection, editChangeNote, staffStamp
         </Button>)}</div>
       </>}
       {section === 'flags' && <>
-        <div className="cb-editor-grid">{STOP_AND_WATCH_CONFIG.map((item) => {
+        <div className="cb-editor-grid cb-editor-flags">{STOP_AND_WATCH_CONFIG.map((item) => {
           const selected = draft.flags.includes(item.id);
           const Icon = getStopAndWatchIcon(item.id);
           const label = getTranslatedStopAndWatchLabel(item.id, language, item.plainLabel || item.shortLabel);
@@ -213,6 +219,8 @@ export function ResidentEditor({ row, initialSection, editChangeNote, staffStamp
           </div>;
         })}</div>
         {draft.flags.length > 0 && <Button variant="quiet" onClick={() => update('flags', [])}>{l10n('Clear all flags')}</Button>}
+      </>}
+      {section === 'notification' && <>
         <label className="flex items-center gap-2 min-h-11 mt-2">
           <input type="checkbox" checked={draft.notified} aria-describedby="cb-notification-help"
             onChange={(event) => update('notified', event.target.checked)} />

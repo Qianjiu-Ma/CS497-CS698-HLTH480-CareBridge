@@ -24,6 +24,14 @@
   }
 }
 
+@media screen {
+  .cb-app :is(.font-mono, .tabular-nums) {
+    font-family: inherit;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: normal;
+  }
+}
+
 .translucent-chrome {
   background-color: rgba(255, 255, 255, 0.86);
   -webkit-backdrop-filter: blur(12px);

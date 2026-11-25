@@ -60,11 +60,15 @@ test.describe('compact touch controls', () => {
     await expect(input).toBeFocused();
     await input.fill('Fictional test note');
     await expect(input).toHaveValue('Fictional test note');
+    const composer = page.getByRole('dialog', { name: 'Report', exact: true });
+    await expect(composer).toHaveCSS('height', '480px');
     const inputBox = (await input.boundingBox())!;
-    const nav = page.locator('.cb-nav-tabs');
-    expect(inputBox.y + inputBox.height).toBeLessThanOrEqual((await nav.boundingBox())!.y);
+    expect(inputBox.y + inputBox.height).toBeLessThanOrEqual(480);
+    await composer.getByRole('button', { name: 'Close', exact: true }).tap();
+    await expect(composer).toBeHidden();
+    await expect(page.locator('.cb-report-resume')).toBeFocused();
 
-    await nav.locator('[data-tab=settings]').tap();
+    await page.locator('.cb-nav-tabs [data-tab=settings]').tap();
     await page.getByRole('button', { name: /Speech pause/ }).tap();
     const sheet = page.getByRole('dialog', { name: 'Speech pause' });
     await expect(sheet).toBeVisible();
@@ -80,7 +84,7 @@ test('compact clinical details and records adapt without losing their controls',
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
   await page.locator('[data-tab=incoming]').click();
-  await expect(page.locator('.cb-shift-glance')).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Needs attention/ })).toBeVisible();
   const concern = page.locator('.concern').first();
   await concern.click();
   let dialog = page.getByRole('dialog');

@@ -1,4 +1,4 @@
-import type { SyntheticEvent } from 'react';
+import type { KeyboardEvent, SyntheticEvent } from 'react';
 
 export function dismissDialog(dialog: HTMLDialogElement | null, afterClose?: () => void) {
   if (!dialog?.open) return;
@@ -39,6 +39,12 @@ export function dismissDialog(dialog: HTMLDialogElement | null, afterClose?: () 
   dialog.addEventListener('submit', blockInteraction, true);
   void animation.finished.then(finish, finish);
   return () => { cancelled = true; cleanup(); };
+}
+
+export function handleDialogEscape(event: KeyboardEvent<HTMLDialogElement>, onDismiss: () => void) {
+  if (event.key !== 'Escape' || event.defaultPrevented) return;
+  event.preventDefault();
+  onDismiss();
 }
 
 export function cancelDialog(event: SyntheticEvent<HTMLDialogElement>) {

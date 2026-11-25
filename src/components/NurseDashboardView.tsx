@@ -1,8 +1,9 @@
-import { cancelDialog, dismissDialog } from '../utils/dialogMotion';
+import { cancelDialog, dismissDialog, handleDialogEscape } from '../utils/dialogMotion';
 import { ClinicalText } from './ClinicalText';
 import { l10n } from '../utils/localization';
+import { useCompactLayout } from '../utils/useCompactLayout';
 import { useOverlayScrollbars } from '../utils/overlayScrollbars';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AlertThresholds, HandoffRow, NurseEscalation } from '../types/handoff';
 import {
   ArrowUpRight,
@@ -19,7 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import './NurseDashboardView.css';
-import { Button, PageHeader, WorkspaceFooter } from './WorkspaceUi';
+import { Button, DraftDiscard, PageHeader, WorkspaceFooter } from './WorkspaceUi';
 import {
   computeRowSeverity,
   getCodeConfig,
@@ -269,6 +270,10 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
   const [detailCodeId, setDetailCodeId] = useState<string | null>(null);
   const [isEditingNurseName, setIsEditingNurseName] = useState(false);
   const [nurseNameDraft, setNurseNameDraft] = useState(nurseName);
+  const compact = useCompactLayout();
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const assessmentInitial = useRef('');
+  const draftFocus = useRef<HTMLElement | null>(null);
   const [assessmentDraft, setAssessmentDraft] = useState('');
   const [resolutionDraft, setResolutionDraft] = useState('');
   const [assessmentError, setAssessmentError] = useState('');
@@ -279,6 +284,7 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
   const [announcement, setAnnouncement] = useState('');
   const dialogRef = useRef<HTMLDialogElement>(null);
   const criteriaRef = useRef<HTMLDialogElement>(null);
+  const concernBody = useRef<HTMLDivElement>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
   const resolutionRef = useRef<HTMLTextAreaElement>(null);
   const filterRef = useRef<HTMLElement>(null);
@@ -556,7 +562,8 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
     .find((item) => item.id === selectedId);
   const detailCodeConfig = detailCodeId ? getCodeConfig(detailCodeId, customCodeTiers) : null;
   const detailTierMeta = detailCodeConfig ? TIER_METADATA[detailCodeConfig.defaultTier] : null;
-  useOverlayScrollbars(dialogRef, 'both', Boolean(selectedConcern));
+  useOverlayScrollbars(dialogRef, 'both', Boolean(selectedConcern) && !compact);
+  useOverlayScrollbars(concernBody, 'y', Boolean(selectedConcern) && compact);
   useOverlayScrollbars(criteriaRef, 'both', Boolean(detailCodeConfig));
 
   useEffect(() => {
@@ -571,7 +578,9 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
 
   const openConcern = (item: EnrichedConcern, trigger: HTMLButtonElement) => {
     rowTriggerRef.current = trigger;
-    setAssessmentDraft(item.stage === 'monitoring' ? item.esc?.nurseComment || '' : '');
+    assessmentInitial.current = item.stage === 'monitoring' ? item.esc?.nurseComment || '' : '';
+    setAssessmentDraft(assessmentInitial.current);
+    setConfirmDiscard(false);
     setResolutionDraft('');
     setAssessmentError('');
     setResolutionError('');
@@ -581,8 +590,29 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
     setSelectedId(item.id);
   };
 
+  useLayoutEffect(() => {
+    if (confirmDiscard || !draftFocus.current) return;
+    draftFocus.current.focus({ preventScroll: true });
+    draftFocus.current = null;
+  }, [confirmDiscard]);
+
+  const resumeConcern = () => setConfirmDiscard(false);
+
+  const requestConcernClose = () => {
+    if (confirmDiscard) {
+      resumeConcern();
+      return;
+    }
+    if (assessmentDraft !== assessmentInitial.current || resolutionDraft || checkedResolution) {
+      draftFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      setConfirmDiscard(true);
+    } else dismissDialog(dialogRef.current);
+  };
+
   const handleDialogClose = () => {
     setSelectedId(null);
+    setConfirmDiscard(false);
+    draftFocus.current = null;
     setDetailCodeId(null);
     const trigger = rowTriggerRef.current;
     if (trigger?.isConnected) {
@@ -817,7 +847,7 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
               onClick={(event) => openConcern(item, event.currentTarget)}
             >
               <span className="clinical-review-symbol" data-tone={tone}><FindingIcon /></span>
-              <span className="min-w-0">
+              <span className="clinical-review-row-copy min-w-0">
                 <span className="clinical-review-identity">
                   <strong>{item.residentName}</strong>
                   <span>{l10n("· Room") + " "}{item.room}</span>
@@ -840,15 +870,18 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
     const finding = compactFinding(item);
     const esc = item.esc;
     const templates = needsReview ? getAssessmentTemplates(item.codes, item.isBmOverdue, item.isLowFluid) : [];
-    return (
-      <div className="clinical-review-dialog-body">
+    const saveAction = <Button type="submit" form="clinical-review-form" variant="primary">
+      {needsReview ? l10n("Save & monitor") : l10n("Save follow-up")}
+    </Button>;
+    return <>
+      <div className="clinical-review-dialog-body" data-assessable={!resolved || undefined} ref={concernBody} hidden={confirmDiscard}>
         <div className="clinical-review-detail-head cb-adaptive-head">
           <div>
             <p className="clinical-review-sub">{l10n("Room") + " "}{item.room} · {l10n(concernStatus(item))}</p>
             <h2 id="clinical-review-dialog-title">{item.residentName}</h2>
           </div>
           <button type="button" autoFocus className="clinical-review-close" aria-label={l10n("Close clinical review")}
-            onClick={() => dismissDialog(dialogRef.current)}><X /></button>
+            onClick={requestConcernClose}><X aria-hidden="true" /></button>
         </div>
         <section className="clinical-review-block">
           <h3 className={item.isPriorityAttention ? 'priority' : undefined}>
@@ -919,7 +952,7 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
             }}>{l10n("Reopen for monitoring")}</Button>
           </div>
         ) : (
-          <form className="clinical-review-block" onSubmit={(event) => {
+          <form className="clinical-review-block" id="clinical-review-form" onSubmit={(event) => {
             event.preventDefault();
             saveConcern(item, false);
           }}>
@@ -928,6 +961,7 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
               ref={noteRef}
               id="clinical-review-note"
               aria-invalid={Boolean(assessmentError)}
+              aria-describedby={assessmentError ? "clinical-assessment-error" : undefined}
               value={assessmentDraft}
               onChange={(event) => {
                 setAssessmentDraft(event.target.value);
@@ -936,9 +970,9 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
               }}
               placeholder={l10n("Record verified findings and actions...")}
             />
-            {assessmentError && <p role="alert" className="priority">{l10n(assessmentError)}</p>}
+            {assessmentError && <p id="clinical-assessment-error" role="alert" className="priority">{l10n(assessmentError)}</p>}
             <div className="clinical-review-actions">
-              <Button type="submit" variant="primary">{needsReview ? l10n("Save & monitor") : l10n("Save follow-up")}</Button>
+              {!compact && saveAction}
               <Button aria-expanded={showResolution}
                 onClick={() => {
                   setShowResolution(!showResolution);
@@ -953,12 +987,13 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
                     <label htmlFor="clinical-review-resolution"><strong>{l10n("Verified clinical resolution outcome")}</strong></label>
                     <textarea dir="auto" className="cb-field" id="clinical-review-resolution" ref={resolutionRef} value={resolutionDraft}
                       aria-invalid={Boolean(resolutionError)}
+                      aria-describedby={resolutionError ? "clinical-resolution-error" : undefined}
                       onChange={(event) => {
                         setResolutionDraft(event.target.value);
                         setCheckedResolution(false);
                         setResolutionError('');
                       }} />
-                    {resolutionError && <p role="alert" className="priority">{l10n(resolutionError)}</p>}
+                    {resolutionError && <p id="clinical-resolution-error" role="alert" className="priority">{l10n(resolutionError)}</p>}
                   </>
                 )}
                 <label className="clinical-review-verify">
@@ -975,7 +1010,11 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
           </form>
         )}
       </div>
-    );
+      {compact && !resolved && !confirmDiscard && <footer className="clinical-review-footer">{saveAction}</footer>}
+      {confirmDiscard && <DraftDiscard titleId="clinical-review-discard-title"
+        context={<><bdi>{item.residentName}</bdi> {l10n('· Room')} <bdi>{item.room}</bdi></>}
+        onKeepEditing={resumeConcern} onDiscard={() => dismissDialog(dialogRef.current)} />}
+    </>;
   };
 
   const filters: { id: TriageFilter; label: string; count: number }[] = [
@@ -1044,8 +1083,10 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
         )}
       </WorkspaceFooter>
       <div className="sr-only" role="status">{l10n(announcement)}</div>
-      <dialog onCancel={cancelDialog} className="clinical-review-dialog cb-motion-dialog cb-adaptive-detail" ref={dialogRef} aria-labelledby="clinical-review-dialog-title"
-        onClose={handleDialogClose}>
+      <dialog onKeyDown={(event) => handleDialogEscape(event, requestConcernClose)}
+        onCancel={(event) => { event.preventDefault(); requestConcernClose(); }}
+        className="clinical-review-dialog cb-motion-dialog cb-adaptive-detail" ref={dialogRef}
+        aria-labelledby={confirmDiscard ? "clinical-review-discard-title" : "clinical-review-dialog-title"} onClose={handleDialogClose}>
         {selectedConcern && renderConcernDetail(selectedConcern)}
       </dialog>
       {detailCodeConfig && detailTierMeta && (

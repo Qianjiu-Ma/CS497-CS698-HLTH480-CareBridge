@@ -20,7 +20,11 @@ for (const width of [320, 768, 1440]) {
     await expect(header).toBeInViewport();
     if (width === 320) {
       await expect(nav).toHaveCSS('width', '320px');
-      await expect(page.locator('.cb-workspace-footer--sticky')).toHaveCSS('width', '320px');
+      const footer = page.locator('.cb-handoff .cb-workspace-footer');
+      await expect(footer).toHaveCSS('position', 'static');
+      const review = footer.getByRole('button', { name: 'Review handoff' });
+      await review.scrollIntoViewIfNeeded();
+      await expect(review).toBeInViewport();
     }
     await nav.locator('[data-tab=settings]').click();
     await expect.poll(widths).toEqual(expected);

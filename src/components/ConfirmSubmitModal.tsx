@@ -1,5 +1,6 @@
 import { l10n, localizedShift } from '../utils/localization';
 import React, { useState, useEffect } from 'react';
+import { useCompactLayout } from '../utils/useCompactLayout';
 import { ControlledDialog } from './WorkspaceUi';
 import {
   HandoffRow,
@@ -46,12 +47,17 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
   onConfirmAndSubmit,
   onGoToResident,
 }) => {
+  const compact = useCompactLayout();
   const [overrideReason, setOverrideReason] = useState('');
   const [acknowledgedOverride, setAcknowledgedOverride] = useState(false);
   const [acknowledgedPendingAi, setAcknowledgedPendingAi] = useState(false);
 
   useEffect(() => {
-    if (!isOpen) setAcknowledgedPendingAi(false);
+    if (!isOpen) {
+      setAcknowledgedPendingAi(false);
+      setAcknowledgedOverride(false);
+      setOverrideReason('');
+    }
   }, [isOpen]);
 
   const evaluatedRows = rows.map((r) => {
@@ -103,9 +109,118 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
     onConfirmAndSubmit(hasTier2Escalation ? overrideReason.trim() : undefined);
   };
 
+  const submissionWarnings = <>
+      {/* TIER 3 BLOCKER */}
+      {hasTier3Blocker && (
+        <div className="p-4 bg-purple-50 border border-purple-300 rounded-xl space-y-2.5">
+          <div className="flex items-start gap-2.5">
+            <OctagonAlert className="w-5 h-5 text-purple-700 shrink-0 mt-0.5" />
+            <div className="flex-1 space-y-2">
+              <h4 className="font-bold text-purple-950 text-xs uppercase tracking-wide">
+                {l10n("Submission Blocked: Tier 3 – Report to Nurse Now")}
+              </h4>
+              <p className="text-purple-900 leading-relaxed">
+                {l10n("Notify the Charge Nurse immediately and record their initials before submitting.") + " "}<strong>{l10n("Overrides are not permitted for Tier 3.")}</strong>
+              </p>
+              <div className="space-y-1.5">
+                {unnotifiedTier3.map(({ row: u, codes }) => (
+                  <div
+                    key={u.room}
+                    className="flex flex-wrap items-center justify-between gap-2 bg-white border border-purple-200 rounded-lg p-2"
+                  >
+                    <span className="font-semibold text-purple-950">
+                      {l10n("Rm") + " "}{u.room} ({u.residentName}): {codes.map(formatCodeChip).join(', ')}
+                    </span>
+                    {onGoToResident && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onGoToResident(u.room);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-700 hover:bg-purple-800 text-white rounded text-[11px] font-semibold cursor-pointer"
+                      >
+                        <span>{l10n("Go to Rm") + " "}{u.room}</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TIER 2 WARNING */}
+      {!hasTier3Blocker && hasTier2Escalation && (
+        <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl space-y-3">
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+            <div className="flex-1 space-y-2">
+              <h4 className="font-bold text-amber-950 text-xs uppercase tracking-wide">
+                {l10n("Tier 2 Warning – Charge Nurse Notification Pending")}
+              </h4>
+              <div className="space-y-1.5">
+                {unnotifiedTier2.map(({ row: u, codes }) => (
+                  <div
+                    key={u.room}
+                    className="flex flex-wrap items-center justify-between gap-2 bg-white border border-amber-200 rounded-lg p-2"
+                  >
+                    <span className="font-semibold text-amber-950">
+                      {l10n("Rm") + " "}{u.room} ({u.residentName}): {codes.map(formatCodeChip).join(', ')}
+                    </span>
+                    {onGoToResident && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onGoToResident(u.room);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-700 hover:bg-amber-800 text-white rounded text-[11px] font-semibold cursor-pointer"
+                      >
+                        <span>{l10n("Go to Rm") + " "}{u.room}</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-2 border-t border-amber-200 space-y-2">
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={acknowledgedOverride}
+                onChange={(e) => setAcknowledgedOverride(e.target.checked)}
+                className="mt-0.5 w-4 h-4 text-amber-700 rounded border-amber-300 focus:ring-amber-700"
+              />
+              <span className="text-amber-950 font-semibold leading-tight">
+                {compact ? l10n("Override reason") + ' · ' + l10n("Confirm & Submit Handoff")
+                  : l10n("Submit with Clinical Override Reason (permanently logged in EMR audit trail)")}
+              </span>
+            </label>
+
+            {acknowledgedOverride && (
+              <input
+                type="text"
+                aria-label={l10n("Override reason")}
+                value={overrideReason}
+                onChange={(e) => setOverrideReason(e.target.value)}
+                placeholder={l10n("e.g. Charge Nurse was in an emergency; verbal update given in hallway.")}
+                className="w-full text-xs p-2 bg-white border border-amber-300 rounded-lg text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
+              />
+            )}
+          </div>
+        </div>
+      )}
+  </>;
+
   return (
     <ControlledDialog open={isOpen} onDismiss={onClose} label={l10n("Confirm and submit shift handoff")} className="cb-review-modal cb-adaptive-detail cb-motion-dialog">
-      <div className="cb-review-content bg-white rounded-xl border border-slate-200 p-5 sm:p-6 space-y-4 text-xs text-slate-800">
+      <div className="cb-review-content bg-white rounded-xl border border-slate-200 p-5 sm:p-6 text-xs text-slate-800">
       {/* Header */}
       <div className="cb-adaptive-head flex items-start justify-between pb-3 border-b border-slate-200">
         <div>
@@ -126,6 +241,8 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
           <X className="w-5 h-5" />
         </button>
       </div>
+
+      {compact && submissionWarnings}
 
       {/* Shift Sign-off Overview */}
       <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
@@ -150,7 +267,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
         <div className="font-semibold text-slate-700 uppercase tracking-wider text-[11px]">
           {l10n("Resident Changes & Follow-Ups")}
         </div>
-        <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-56 overflow-y-auto">
+        <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 cb-review-resident-list">
           {evaluatedRows.map(({ row: r, codes, severity, told }) => {
             const hasChange =
               codes.length > 0 || (r.changeNote?.value && r.changeNote.value !== 'No change');
@@ -162,9 +279,9 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
             const tierMeta = severity ? TIER_METADATA[severity.effectiveTier] : null;
 
             return (
-              <div key={r.room} className="p-2.5 flex items-start justify-between gap-3 text-xs">
+              <div key={r.room} className="cb-review-resident p-2.5 flex items-start justify-between gap-3 text-xs">
                 <div className="space-y-1">
-                  <div className="flex items-center gap-2">
+                  <div className="cb-review-resident-identity flex items-center gap-2">
                     <span className="font-semibold text-slate-900 font-mono tabular-nums">
                       {r.room}
                     </span>
@@ -255,110 +372,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
         </div>
       )}
 
-      {/* TIER 3 BLOCKER */}
-      {hasTier3Blocker && (
-        <div className="p-4 bg-purple-50 border border-purple-300 rounded-xl space-y-2.5">
-          <div className="flex items-start gap-2.5">
-            <OctagonAlert className="w-5 h-5 text-purple-700 shrink-0 mt-0.5" />
-            <div className="flex-1 space-y-2">
-              <h4 className="font-bold text-purple-950 text-xs uppercase tracking-wide">
-                {l10n("Submission Blocked: Tier 3 – Report to Nurse Now")}
-              </h4>
-              <p className="text-purple-900 leading-relaxed">
-                {l10n("Notify the Charge Nurse immediately and record their initials before submitting.") + " "}<strong>{l10n("Overrides are not permitted for Tier 3.")}</strong>
-              </p>
-              <div className="space-y-1.5">
-                {unnotifiedTier3.map(({ row: u, codes }) => (
-                  <div
-                    key={u.room}
-                    className="flex flex-wrap items-center justify-between gap-2 bg-white border border-purple-200 rounded-lg p-2"
-                  >
-                    <span className="font-semibold text-purple-950">
-                      {l10n("Rm") + " "}{u.room} ({u.residentName}): {codes.map(formatCodeChip).join(', ')}
-                    </span>
-                    {onGoToResident && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onClose();
-                          onGoToResident(u.room);
-                        }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-700 hover:bg-purple-800 text-white rounded text-[11px] font-semibold cursor-pointer"
-                      >
-                        <span>{l10n("Go to Rm") + " "}{u.room}</span>
-                        <ArrowRight className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TIER 2 WARNING */}
-      {!hasTier3Blocker && hasTier2Escalation && (
-        <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl space-y-3">
-          <div className="flex items-start gap-2.5">
-            <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
-            <div className="flex-1 space-y-2">
-              <h4 className="font-bold text-amber-950 text-xs uppercase tracking-wide">
-                {l10n("Tier 2 Warning – Charge Nurse Notification Pending")}
-              </h4>
-              <div className="space-y-1.5">
-                {unnotifiedTier2.map(({ row: u, codes }) => (
-                  <div
-                    key={u.room}
-                    className="flex flex-wrap items-center justify-between gap-2 bg-white border border-amber-200 rounded-lg p-2"
-                  >
-                    <span className="font-semibold text-amber-950">
-                      {l10n("Rm") + " "}{u.room} ({u.residentName}): {codes.map(formatCodeChip).join(', ')}
-                    </span>
-                    {onGoToResident && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onClose();
-                          onGoToResident(u.room);
-                        }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-700 hover:bg-amber-800 text-white rounded text-[11px] font-semibold cursor-pointer"
-                      >
-                        <span>{l10n("Go to Rm") + " "}{u.room}</span>
-                        <ArrowRight className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-2 border-t border-amber-200 space-y-2">
-            <label className="flex items-start gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={acknowledgedOverride}
-                onChange={(e) => setAcknowledgedOverride(e.target.checked)}
-                className="mt-0.5 w-4 h-4 text-amber-700 rounded border-amber-300 focus:ring-amber-700"
-              />
-              <span className="text-amber-950 font-semibold leading-tight">
-                {l10n("Submit with Clinical Override Reason (permanently logged in EMR audit trail)")}
-              </span>
-            </label>
-
-            {acknowledgedOverride && (
-              <input
-                type="text"
-                value={overrideReason}
-                onChange={(e) => setOverrideReason(e.target.value)}
-                placeholder={l10n("e.g. Charge Nurse was in an emergency; verbal update given in hallway.")}
-                className="w-full text-xs p-2 bg-white border border-amber-300 rounded-lg text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
-              />
-            )}
-          </div>
-        </div>
-      )}
+      {!compact && submissionWarnings}
 
       {/* DOCUMENTATION COMPLETENESS & AI REVIEW SAFEGUARD */}
       {(hasPendingAiItems || missingDocAlerts.length > 0 || bmOverdueAlerts.length > 0) && (
@@ -467,7 +481,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
       </p>
 
       {/* Footer Actions */}
-      <div className="flex items-center justify-between pt-3 border-t border-slate-200">
+      <footer className="cb-review-footer flex items-center justify-between pt-3 border-t border-slate-200">
         <button
           type="button"
           onClick={onClose}
@@ -493,7 +507,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
               : l10n("Confirm & Submit Handoff")}
           </span>
         </button>
-      </div>
+      </footer>
       </div>
     </ControlledDialog>
   );

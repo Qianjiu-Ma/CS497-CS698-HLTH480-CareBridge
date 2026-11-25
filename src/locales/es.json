@@ -475,6 +475,7 @@
   "Reopen for monitoring": "Reabrir para monitoreo",
   "Reopened: {{task}}. Clinical concerns unchanged.": "Reabierto: {{task}}. Las preocupaciones clínicas no han cambiado.",
   "Replace all bracketed placeholders ([...]) with verified bedside findings before saving.": "Reemplace todos los marcadores de posición entre corchetes ([...]) con hallazgos verificados junto a la cama antes de guardar.",
+  "Report": "Informe",
   "Report · All residents": "Informe · Todos los residentes",
   "Report · Room {{room}}": "Informe · Sala {{room}}",
   "Report now": "Reportar ahora",

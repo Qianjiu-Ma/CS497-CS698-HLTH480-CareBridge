@@ -1,7 +1,7 @@
 import { SelectPopover } from './SelectPopover';
 import { ClinicalText } from './ClinicalText';
 import { l10n, uiLanguageName } from '../utils/localization';
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Mic,
   MicOff,
@@ -38,11 +38,13 @@ import {
 import { translateBidirectional, detectLanguage, speechLocaleFor } from '../utils/translator';
 import {
   clinicalTranscribeSingleResident,
+  type ParseResult,
   mergeCareRequirementsIntoRow,
 } from '../utils/geminiParser';
 import { StopAndWatchIconBadge, findCodeIdFromFlagText } from './StopAndWatchIconBadge';
 import type { InterfaceLanguage } from '../utils/localization';
-import { Button } from './WorkspaceUi';
+import { Button, ControlledDialog } from './WorkspaceUi';
+import { useCompactLayout } from '../utils/useCompactLayout';
 
 interface VoiceControlPanelProps {
   onProcessTranscript: (
@@ -54,7 +56,7 @@ interface VoiceControlPanelProps {
     },
     speechEndTime?: number,
     targetLanguage?: string
-  ) => Promise<any>;
+  ) => Promise<ParseResult | null | undefined>;
   isProcessing: boolean;
   liveTranscript: string;
   translatedTranscript: string;
@@ -76,6 +78,7 @@ interface VoiceControlPanelProps {
   onUpdateRow?: (room: string, updated: Partial<HandoffRow>) => void;
   interfaceLanguage?: InterfaceLanguage;
   resetVersion?: number;
+  shiftKey: string;
   toolbarActions?: React.ReactNode;
 }
 
@@ -148,6 +151,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
   onUpdateRow,
   interfaceLanguage = 'en',
   resetVersion = 0,
+  shiftKey,
   toolbarActions,
 }) => {
   const {
@@ -205,6 +209,14 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
 
   // Demo Scenarios dropdown
   const [activeScenarioOpen, setActiveScenarioOpen] = useState(false);
+  const compact = useCompactLayout();
+  const [reportMinimized, setReportMinimized] = useState(false);
+  const [composerPresent, setComposerPresent] = useState(false);
+  const reportRoot = useRef<HTMLDivElement>(null);
+  const resumeReport = useRef<HTMLButtonElement>(null);
+  const restoreComposerFocus = useRef(false);
+  const residentRequest = useRef(0);
+  const previewRequest = useRef(0);
 
   // Clarification response
   const [answeringQuestionIndex, setAnsweringQuestionIndex] = useState<number | null>(null);
@@ -243,6 +255,16 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
     effectiveScopeRef.current = effectiveScope;
     focusedRowRef.current = focusedRow;
   }, [effectiveScope, focusedRow]);
+
+  // An extraction belongs to the resident and shift context in which it started.
+  useLayoutEffect(() => {
+    return () => { residentRequest.current += 1; };
+  }, [effectiveScopeKey, staffStamp, resetVersion, shiftKey]);
+
+  useEffect(() => {
+    setIsExtractingSingle(false);
+    setPendingSingleRecord(null);
+  }, [staffStamp, shiftKey]);
 
   // Persist active draft continuously so tab switches never lose in-progress notes
   useEffect(() => {
@@ -335,6 +357,9 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
     setTargetLanguage(nextDraft?.targetLanguage || 'en');
     targetLanguageRef.current = nextDraft?.targetLanguage || 'en';
     setInterimText('');
+    setIsTranslating(false);
+    setErrorMessage(null);
+    setIsExtractingSingle(false);
     setPendingSingleRecord(null);
     setAppliedResidentNotice(null);
 
@@ -399,6 +424,9 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
         // ignore
       }
       setIsExpanded(false);
+      setReportMinimized(false);
+      setIsTranslating(false);
+      setIsExtractingSingle(false);
       setInputText('');
       setLiveTranslationText('');
       setDetectedSourceLanguage(null);
@@ -475,7 +503,10 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
     async (text: string, sourceLang: string, targetLang: string) => {
       if (!text.trim()) return;
       const scopeKey = activeScopeKeyRef.current;
+      const scopeVersion = residentRequest.current;
+      const request = ++previewRequest.current;
       const isCurrentPreview = () => activeScopeKeyRef.current === scopeKey &&
+        scopeVersion === residentRequest.current && request === previewRequest.current &&
         selectedLanguageRef.current === sourceLang && targetLanguageRef.current === targetLang;
 
       // Resident dictation waits for explicit translation or extraction.
@@ -515,7 +546,11 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
           targetLang
         );
 
-        if (result && result.translatedTranscript) {
+        if (result === undefined) {
+          setSegments((previous) => previous.filter(({ id }) => id !== segId));
+          return;
+        }
+        if (result?.translatedTranscript) {
           if (isCurrentPreview()) setLiveTranslationText(result.translatedTranscript);
           if (result.detectedSourceLanguage) {
             if (isCurrentPreview()) setDetectedSourceLanguage(result.detectedSourceLanguage);
@@ -582,7 +617,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
           );
         }
       } finally {
-        setIsTranslating(false);
+        if (request === previewRequest.current) setIsTranslating(false);
       }
     },
     []
@@ -706,7 +741,14 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
     };
   }, [stopAudioAnalysis, flushFinalBuffer, selectedLanguage, getLanguageByCode]);
 
+  const invalidateResidentExtraction = () => {
+    residentRequest.current += 1;
+    setIsExtractingSingle(false);
+    setPendingSingleRecord(null);
+  };
+
   const handleLanguageChange = (language: string) => {
+    invalidateResidentExtraction();
     // Flush buffered speech while its original recognition locale is still selected.
     if (isListeningRef.current) {
       flushFinalBuffer();
@@ -809,6 +851,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
 
   const handleInputChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = event.target.value;
+    invalidateResidentExtraction();
     setInputText(value);
     setLiveTranslationText('');
     setDetectedSourceLanguage(null);
@@ -822,10 +865,11 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
     if (!raw) return;
 
     if (effectiveScope === 'resident' && focusedRow) {
+      const request = ++residentRequest.current;
       setIsExtractingSingle(true);
+      setErrorMessage(null);
       setAppliedResidentNotice(null);
       try {
-        const scopeKey = activeScopeKeyRef.current;
         const res = await clinicalTranscribeSingleResident(
           raw,
           `${focusedRow.residentName} (Room ${focusedRow.room})`,
@@ -833,16 +877,17 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
           new Date().toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }),
           selectedLanguage
         );
-        if (activeScopeKeyRef.current === scopeKey && accumulatedTranscriptRef.current.trim() === raw) {
+        if (residentRequest.current === request && accumulatedTranscriptRef.current.trim() === raw) {
           setPendingSingleRecord(res);
         }
       } catch (err) {
+        if (residentRequest.current !== request) return;
         console.error('Single-resident extraction error:', err);
         setErrorMessage(err instanceof Error && err.message === 'Translation unavailable'
           ? 'Translation unavailable. Review the original report and enter the findings manually.'
           : 'Could not extract note. Try again or enter directly below.');
       } finally {
-        setIsExtractingSingle(false);
+        if (residentRequest.current === request) setIsExtractingSingle(false);
       }
       return;
     }
@@ -994,7 +1039,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
     activeScopeKeyRef.current = 'unit';
 
     setReportScope('unit');
-    setPendingSingleRecord(null);
+    invalidateResidentExtraction();
     setAppliedResidentNotice(null);
     setSelectedLanguage(sc.language);
     selectedLanguageRef.current = sc.language;
@@ -1006,7 +1051,9 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
     setLiveTranslationText(sc.expectedTranslation);
     setDetectedSourceLanguage(sc.language);
     setActiveScenarioOpen(false);
+    setReportMinimized(false);
     setIsExpanded(true);
+    setIsTranslating(false);
 
     const demoSeg: TranscriptSegment = {
       id: `demo_${Date.now()}`,
@@ -1054,6 +1101,36 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
     Boolean(pendingSingleRecord);
   const showDrawer =
     isExpanded || isListening || hasActionItems || Boolean(errorMessage) || Boolean(appliedResidentNotice);
+  const composerOpen = compact && showDrawer && (!reportMinimized || isListening);
+  const reportIdentity = effectiveScope === 'resident' && focusedRow
+    ? <><bdi>{focusedRow.residentName}</bdi> {l10n('· Room')} <bdi>{focusedRow.room}</bdi></>
+    : l10n('All residents');
+
+  useLayoutEffect(() => {
+    if (composerOpen) setComposerPresent(true);
+    else if (!composerPresent && restoreComposerFocus.current) {
+      restoreComposerFocus.current = false;
+      const trigger = compact ? '#report-more-trigger' : '#handoff-report-input';
+      (resumeReport.current || reportRoot.current?.querySelector<HTMLElement>(trigger))?.focus({ preventScroll: true });
+    }
+  }, [composerOpen, composerPresent, compact]);
+
+  useEffect(() => {
+    if (!showDrawer || isListening) setReportMinimized(false);
+  }, [showDrawer, isListening]);
+
+  const minimizeComposer = () => {
+    if (activeScenarioOpen) {
+      setActiveScenarioOpen(false);
+      requestAnimationFrame(() => reportRoot.current?.querySelector<HTMLElement>('#report-more-trigger')?.focus());
+    } else if (!isListening) setReportMinimized(true);
+  };
+
+  const afterComposerClose = () => {
+    restoreComposerFocus.current = true;
+    setComposerPresent(false);
+  };
+
   const showTranslationPane =
     showTwoWayTarget ||
     selectedLanguage !== 'en' ||
@@ -1062,11 +1139,9 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
       detectedSourceLanguage !== 'en' &&
       detectedSourceLanguage !== 'und');
 
-  return (
-    <div className="cb-report">
-      {/* Unified Single-Row Report Controls */}
+  const renderToolbar = (showWorkspaceActions: boolean) => (
       <div className="cb-report-toolbar flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="cb-report-capture flex flex-wrap items-center gap-2">
           <Button variant={isListening ? 'danger' : 'primary'} onClick={toggleListening}>
             {isListening ? <><MicOff />{l10n('Stop ({{time}})', { time: formatTimer(secondsListening) })}</> : <><Mic />
               {effectiveScope === 'resident' && focusedRow ? l10n('Report · Room {{room}}', { room: focusedRow.room }) : l10n("Report · All residents")}
@@ -1100,7 +1175,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
 
         </div>
         <div className="cb-page-actions">
-          {toolbarActions}
+          {showWorkspaceActions && toolbarActions}
           <div className="cb-report-more relative" ref={scenarioDropdownRef}>
             <Button id="report-more-trigger" aria-expanded={activeScenarioOpen} aria-controls="report-more-panel"
               onClick={() => setActiveScenarioOpen(!activeScenarioOpen)}>
@@ -1111,9 +1186,10 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                 <Button variant="quiet" aria-controls="report-drawer"
                   onClick={() => {
                     setIsExpanded(!isExpanded);
+                    if (!isExpanded) setReportMinimized(false);
                     setActiveScenarioOpen(false);
                     requestAnimationFrame(() => {
-                      if (!isExpanded) document.getElementById('handoff-report-input')?.focus();
+                      if (!isExpanded) reportRoot.current?.querySelector<HTMLElement>('#handoff-report-input')?.focus();
                     });
                   }}><FileText /> {isExpanded ? l10n("Hide input") : l10n("Type note")}</Button>
                 <div className="cb-report-options">
@@ -1209,8 +1285,8 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
         </div>
       </div>
 
-      {/* Collapsible Dictation & Translation Workspace */}
-      {showDrawer && (
+  );
+  const drawer = showDrawer && (
         <div className="cb-panel cb-report-drawer space-y-3" id="report-drawer">
           {errorMessage && (
             <div className="bg-amber-50 border border-amber-200 text-amber-950 rounded-xl p-3 text-xs flex items-start justify-between gap-3">
@@ -1274,6 +1350,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                       <button
                         type="button"
                         onClick={() => {
+                          invalidateResidentExtraction();
                           setInputText('');
                           accumulatedTranscriptRef.current = '';
                           setLiveTranslationText('');
@@ -1860,7 +1937,26 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
             </div>
           )}
         </div>
-      )}
-    </div>
   );
+
+  return <div className="cb-report" ref={reportRoot}>
+    {!composerOpen && !composerPresent && renderToolbar(true)}
+    {!compact && !composerPresent && drawer}
+    {compact && showDrawer && reportMinimized && !composerPresent && <Button
+      ref={resumeReport} className="cb-report-resume" aria-haspopup="dialog" onClick={() => setReportMinimized(false)}>
+      {l10n('Report')} · {reportIdentity}
+    </Button>}
+    <ControlledDialog open={composerOpen} label={l10n('Report')} onDismiss={minimizeComposer}
+      onAfterClose={afterComposerClose} className="cb-report-composer cb-adaptive-detail cb-motion-dialog" scrollable={false}>
+      <header className="cb-report-composer-head">
+        <div><h2>{l10n('Report')}</h2><p>{reportIdentity}</p></div>
+        <Button variant="quiet" className="cb-adaptive-close" aria-label={l10n('Close')}
+          disabled={isListening} onClick={minimizeComposer}><X aria-hidden="true" /></Button>
+      </header>
+      <div className="cb-report-composer-body">
+        {renderToolbar(false)}
+        {drawer}
+      </div>
+    </ControlledDialog>
+  </div>;
 };

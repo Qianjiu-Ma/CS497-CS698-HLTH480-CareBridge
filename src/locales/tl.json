@@ -475,6 +475,7 @@
   "Reopen for monitoring": "Muling buksan para sa pagsubaybay",
   "Reopened: {{task}}. Clinical concerns unchanged.": "Muling binuksan: {{task}}. Ang mga klinikal na alalahanin ay hindi nagbabago.",
   "Replace all bracketed placeholders ([...]) with verified bedside findings before saving.": "Palitan ang lahat ng naka-bracket na placeholder ([...]) ng mga na-verify na natuklasan sa gilid ng kama bago i-save.",
+  "Report": "Ulat",
   "Report · All residents": "Ulat · Lahat ng residente",
   "Report · Room {{room}}": "Ulat · Kwarto {{room}}",
   "Report now": "Mag-ulat ngayon",

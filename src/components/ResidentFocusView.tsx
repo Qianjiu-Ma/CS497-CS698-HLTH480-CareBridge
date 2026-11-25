@@ -1,5 +1,6 @@
 import type { OpenResidentEditor, ResidentSection } from './ResidentEditor';
 import { Button } from './WorkspaceUi';
+import { ResidentStep } from './ResidentRibbon';
 import { l10n } from '../utils/localization';
 import { ClinicalText } from './ClinicalText';
 import React, { useState, useEffect, useRef } from 'react';
@@ -10,8 +11,6 @@ import {
   CareRequirementItem,
 } from '../types/handoff';
 import {
-  ChevronLeft,
-  ChevronRight,
   Check,
   Info,
   Plus,
@@ -88,7 +87,6 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
   const additionalNotesText = row.mltcDetails?.qualitativeObservations?.value || row.changeNote?.value || '';
   const notDoneText = row.notDoneNextShift?.value || '';
   const careRequirements = row.careRequirements || [];
-  const toldNurse = Boolean(row.toldNurse?.value);
   const activeCodes = row.changeCodes?.value || [];
   const [selectedExplainingCode, setSelectedExplainingCode] = useState<string | null>(null);
   const [savedNotice, setSavedNotice] = useState(false);
@@ -185,7 +183,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
       className="cb-panel cb-resident-card"
     >
       {/* 1. Resident Header: Distinct Clinical Status vs. Nurse Notification */}
-      <div className="cb-resident-header flex flex-wrap items-start justify-between gap-3">
+      <div className="cb-resident-header">
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
             <h2 ref={headingRef} tabIndex={headingRef ? -1 : undefined} className="cb-resident-title">
@@ -197,7 +195,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
             ) : null}
           </div>
 
-          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs leading-snug">
+          <div className="cb-resident-status">
             {/* Clinical Concern */}
             <span
               className={`inline-flex items-center gap-1.5 font-semibold ${
@@ -223,32 +221,10 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
                 status.clinicalLevel === 'routine' ? l10n("No change recorded") : status.clinicalSummary}</span>
             </span>
 
-            {/* Orthogonal Nurse Notification Status */}
-            {status.nurseState !== 'none' && (
-              <>
-                <span className="text-slate-300" aria-hidden="true">·</span>
-                <span
-                  className={`inline-flex items-center gap-1 font-semibold ${
-                    status.nurseState === 'notify_now'
-                      ? 'text-rose-800'
-                      : status.nurseState === 'notify_shift'
-                      ? 'text-amber-800'
-                      : 'text-emerald-800'
-                  }`}
-                >
-                  {status.nurseState === 'notified' ? (
-                    <Check className="w-3.5 h-3.5 shrink-0" />
-                  ) : (
-                    <BellRing className="w-3.5 h-3.5 shrink-0" />
-                  )}
-                  <span>{status.nurseLabel}</span>
-                </span>
-              </>
-            )}
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="cb-resident-actions">
           {status.hasPending && !isLocked && (
             <button
               type="button"
@@ -260,38 +236,39 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
             </button>
           )}
 
-          {prevRow && (
-            <button
-              type="button"
-              onClick={() => onSelectResident(prevRow.room)}
-              className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-              title={l10n("Previous: Room {{p1}} ({{p2}})", { p1: prevRow.room, p2: prevRow.residentName })}
-            >
-              <ChevronLeft className="w-4 h-4" />
-              <span className="font-mono tabular-nums">{prevRow.room}</span>
-            </button>
-          )}
-
-          {nextRow && (
-            <button
-              type="button"
-              onClick={() => onSelectResident(nextRow.room)}
-              className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-              title={l10n("Next: Room {{p1}} ({{p2}})", { p1: nextRow.room, p2: nextRow.residentName })}
-            >
-              <span className="font-mono tabular-nums">{nextRow.room}</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          )}
+          {prevRow && <ResidentStep direction="previous" resident={prevRow} showRoom onSelect={onSelectResident} />}
+          {nextRow && <ResidentStep direction="next" resident={nextRow} showRoom onSelect={onSelectResident} />}
         </div>
         {!isLocked && <Button variant="quiet" aria-haspopup="dialog" onClick={openSection("metrics")}>
           <Pencil aria-hidden="true" /> {l10n('Edit resident')}
         </Button>}
+        <div className="cb-notification-row" data-state={status.nurseState}>
+          <span className="cb-notification-status">
+            {status.nurseState === 'notified' ? <Check aria-hidden="true" /> : <BellRing aria-hidden="true" />}
+            {status.nurseLabel || l10n('Not recorded')}
+          </span>
+          {!isLocked && <Button variant="quiet" aria-haspopup="dialog" onClick={openSection("notification")}>
+            <Pencil aria-hidden="true" /> {l10n('Nurse notification')}
+          </Button>}
+        </div>
       </div>
 
       {/* 2. Read-First Horizontal Shift Measurements Strip */}
       <div className="cb-resident-metrics">
-          <div className="flex items-start justify-between gap-3">
+          <div className="cb-resident-measurements">
+            <div className="cb-measure-head">
+              <h3>{l10n("Measurements")}</h3>
+              {!isLocked && (
+              <button
+                type="button"
+                aria-haspopup="dialog" onClick={openSection("metrics")}
+                className="cb-measure-edit inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-900 px-2 py-1 rounded-md hover:bg-slate-200/60 transition-colors cursor-pointer shrink-0"
+              >
+                <Pencil className="w-3 h-3" />
+                <span>{l10n("Edit")}</span>
+              </button>
+            )}
+            </div>
             <div className="cb-resident-metric-grid">
               <button
                 type="button"
@@ -374,16 +351,6 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
               </button>
             </div>
 
-            {!isLocked && (
-              <button
-                type="button"
-                aria-haspopup="dialog" onClick={openSection("metrics")}
-                className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-900 px-2 py-1 rounded-md hover:bg-slate-200/60 transition-colors cursor-pointer shrink-0"
-              >
-                <Pencil className="w-3 h-3" />
-                <span>{l10n("Edit")}</span>
-              </button>
-            )}
           </div>
           {hasMeasurementsPending && (
             <div className="mt-2.5 flex items-center justify-between gap-2 px-3 py-1.5 bg-amber-50/80 border border-amber-200 rounded-xl text-xs text-amber-950">
@@ -430,7 +397,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
         {/* Left Column: Completed Care + Health & Changes */}
         <div className="cb-resident-observations">
           {/* GROUP 1: Completed Care (Read-first, Edit-on-demand) */}
-          <section className="cb-resident-section space-y-2.5">
+          <section className="cb-resident-section cb-resident-care">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-slate-900">{l10n("Completed care")}</h3>
 
@@ -492,7 +459,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
           </section>
 
           {/* GROUP 2: Health & Changes (Progressive Stop & Watch + Nurse Escalation + Notes) */}
-          <section className="cb-resident-section space-y-3.5">
+          <section className="cb-resident-section cb-resident-changes">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-slate-900">
                 {l10n("Health changes")}
@@ -630,27 +597,11 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
 
             </div>
 
-            {/* Docked Charge Nurse Notification Row */}
-            <div
-              className={`flex flex-wrap items-center justify-between gap-2.5 px-3 py-2 rounded-xl border text-xs ${
-                status.needsNurseAction && !toldNurse
-                  ? status.isUrgent
-                    ? 'bg-rose-50/70 border-rose-200'
-                    : 'bg-amber-50/70 border-amber-200'
-                  : 'bg-slate-50/70 border-slate-200/80'
-              }`}
-            >
-              <span className="font-semibold">{status.nurseLabel}</span>
-              {toldNurse && row.nurseInitials?.value && <bdi>{row.nurseInitials.value}</bdi>}
-              {!isLocked && <Button variant="quiet" aria-haspopup="dialog" onClick={openSection("flags")}>
-                <Pencil aria-hidden="true" /> {l10n('Nurse notification')}
-              </Button>}
-            </div>
           </section>
         </div>
 
         {/* Right Column: Unified Next Shift (Notes + Actionable Tasks) */}
-        <section className="cb-resident-section cb-resident-next space-y-3">
+        <section className="cb-resident-section cb-resident-next">
           {(() => {
             const hasNextNote = Boolean(notDoneText.trim() && notDoneText.trim() !== '—');
             const completedTasksCount = careRequirements.filter((r) => r.completed).length;
@@ -732,7 +683,7 @@ export const ResidentFocusView: React.FC<ResidentFocusViewProps> = ({
 
                 {/* Unified Handover Note + Actionable Tasks */}
                 {hasNextNote ? (
-                  <div className="space-y-1.5">
+                  <div className="cb-next-content">
                     <button
                       type="button"
                       disabled={isLocked}

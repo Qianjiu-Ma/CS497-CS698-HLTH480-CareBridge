@@ -17,8 +17,11 @@ function positionMenu(panel: HTMLDivElement, trigger: HTMLButtonElement) {
   panel.style.width = width + 'px';
   panel.style.left = Math.max(edge, Math.min(start, document.documentElement.clientWidth - width - edge)) + 'px';
 
-  const below = window.innerHeight - anchor.bottom - gap - edge;
-  const above = anchor.top - gap - edge;
+  const viewport = window.visualViewport;
+  const top = viewport?.offsetTop ?? 0;
+  const bottom = viewport ? top + viewport.height : window.innerHeight;
+  const below = bottom - anchor.bottom - gap - edge;
+  const above = anchor.top - top - gap - edge;
   const placeAbove = below < Math.min(panel.scrollHeight + 2, 384) && above > below;
   panel.style.maxHeight = `min(24rem, ${Math.max(0, placeAbove ? above : below)}px)`;
   panel.style.top = (placeAbove ? anchor.top - gap - panel.offsetHeight : anchor.bottom + gap) + 'px';
@@ -71,9 +74,14 @@ export function SelectPopover<Value extends string | number>({
     place();
     search.current = { prefix: '', time: 0 };
     panel.querySelectorAll('button')[openAt]?.focus();
+    const viewport = window.visualViewport;
+    viewport?.addEventListener('resize', place);
+    viewport?.addEventListener('scroll', place);
     window.addEventListener('resize', place);
     window.addEventListener('scroll', place, true);
     return () => {
+      viewport?.removeEventListener('resize', place);
+      viewport?.removeEventListener('scroll', place);
       window.removeEventListener('resize', place);
       window.removeEventListener('scroll', place, true);
     };

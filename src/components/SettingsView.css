@@ -317,7 +317,30 @@
   min-height: 44px;
 }
 
-@media (max-width: 820px) {
+.carebridge-settings .detail-text { padding: 18px 20px; }
+.carebridge-settings .detail-text h2 { font-size: 16px; }
+.carebridge-settings .detail-text p { max-inline-size: 78ch; font-size: 15px; line-height: 1.65; }
+
+.carebridge-settings .threshold-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  row-gap: 4px;
+}
+.carebridge-settings .threshold-row .value { grid-column: 2 / -1; justify-self: end; }
+
+.carebridge-settings .rule-error {
+  grid-column: 1 / -1;
+  color: var(--cb-danger);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.carebridge-settings .rule-row [aria-invalid="true"] { border-color: var(--cb-danger); }
+
+@media (max-width: 700px) {
+  .carebridge-settings > .cb-page-heading:not(:has(.cb-page-actions)) { min-block-size: 0; }
+  .carebridge-settings .detail-text { padding: 12px 14px; }
+  .carebridge-settings .detail-text p { font-size: 15px; line-height: 1.55; }
+  .carebridge-settings .rule-row input { font-size: 16px; }
 }
 
 @media (max-width: 460px) {
@@ -386,14 +409,6 @@
     flex: 1;
   }
 
-}
-
-.carebridge-settings > :is(.notice, .group, .actions, .detail-head) {
-  max-width: 760px;
-}
-
-.carebridge-settings > section {
-  max-width: 960px;
 }
 
 .carebridge-settings > .detail-head {

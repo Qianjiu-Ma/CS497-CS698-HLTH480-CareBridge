@@ -170,8 +170,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ thresholds, onUpdate
       const invalid = metrics.filter(({ key }) => !Number.isFinite(Number(draft.values[key])) || Number(draft.values[key]) <= 0);
       setInvalidFields(invalid.map(({ key }) => key));
       if (invalid.length) {
-        notify('Enter a positive number for every threshold.');
-        document.getElementById('settings-' + invalid[0].key)?.focus();
+        requestAnimationFrame(() => {
+          settingsRoot.current?.querySelector<HTMLInputElement>('.rule-row input[aria-invalid="true"]')?.focus();
+        });
         return;
       }
       for (const { key, name, unit } of metrics) {
@@ -223,7 +224,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ thresholds, onUpdate
 
   const renderThresholds = () => (
     <div className="cb-panel group">
-      {metrics.map(({ key, name, unit, ...metric }) => <div className="rule-row" key={key}>
+      {metrics.map(({ key, name, unit, ...metric }) => <div className="rule-row threshold-row" key={key}>
         <span className="name">
           {draft?.kind === 'thresholds' ? <label htmlFor={'settings-' + key}>{l10n(name)}</label> : l10n(name)}
           {'storedOnly' in metric && <small className="stored muted">{l10n("Stored only")}</small>}
@@ -231,11 +232,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ thresholds, onUpdate
         {draft?.kind === 'thresholds' ? <>
           <input className="cb-field" id={'settings-' + key} type="number" inputMode="decimal" min="0" step="any"
             value={draft.values[key]} aria-invalid={invalidFields.includes(key)}
+            aria-describedby={invalidFields.includes(key) ? 'settings-error-' + key : undefined}
             onChange={(event) => {
               setDraft({ kind: draft.kind, values: { ...draft.values, [key]: event.target.value } });
               setInvalidFields((fields) => fields.filter((field) => field !== key));
             }} />
           <span className="muted">{unit}</span>
+          {invalidFields.includes(key) && <p className="rule-error" id={'settings-error-' + key}>
+            {l10n('Enter a positive number for every threshold.')}
+          </p>}
         </> : <span className="value">{thresholds[key] ?? DEFAULT_THRESHOLDS[key]} {unit}</span>}
       </div>)}
     </div>

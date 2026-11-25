@@ -1,5 +1,5 @@
 import { l10n } from './utils/localization';
-import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
 import { Navigation, ScreenTab } from './components/Navigation';
 import { ShiftHeaderForm } from './components/ShiftHeaderForm';
 import { VoiceControlPanel } from './components/VoiceControlPanel';
@@ -19,7 +19,7 @@ import { ResidentEditor, type OpenResidentEditor, type ResidentSection } from '.
 import { clearHandoffEditorDrafts } from './utils/handoffEditorDraft';
 import { Button, WorkspaceFooter } from './components/WorkspaceUi';
 import { interfaceLocale, loadInterfaceLocale, setInterfaceLocale, useInterfaceLanguage } from './utils/localization';
-import { useCompactLayout } from './utils/useCompactLayout';
+import { useCompactDialogViewport, useCompactLayout } from './utils/useCompactLayout';
 import type { InterfaceLanguage } from './utils/localization';
 
 import {
@@ -39,6 +39,7 @@ import {
   DemoScenario,
   INITIAL_EMR_HISTORY,
 } from './data/seedData';
+import { mergeReportUpdates } from './utils/reportUpdates';
 import { evaluateDeterministicAlerts } from './utils/alerts';
 import type { IncomingTask } from './utils/incomingShift';
 import { mapStopAndWatchTextToCodeId } from './data/stopAndWatchCodes';
@@ -157,6 +158,7 @@ export default function App() {
     initialPersisted.selectedResidentRoom || '102'
   );
   const compactLayout = useCompactLayout();
+  useCompactDialogViewport(compactLayout);
   const residentHeading = useRef<HTMLHeadingElement>(null);
   const interfaceLanguage = useInterfaceLanguage();
   const localeRequest = useRef(0);
@@ -206,6 +208,11 @@ export default function App() {
   const headerRef = useRef(header);
   headerRef.current = header;
   const recentUtterancesRef = useRef<string[]>([]);
+  const anythingElseRef = useRef(anythingElse);
+  anythingElseRef.current = anythingElse;
+  const reportGeneration = useRef(0);
+  const latestReport = useRef(0);
+  const pendingReports = useRef(new Set<number>());
 
   // Live voice & transcript state
   const [liveTranscript, setLiveTranscript] = useState<string>('');
@@ -216,6 +223,15 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [unassignedExtractions, setUnassignedExtractions] = useState<ExtractedResidentHandoff[]>([]);
   const [lastAutoFilledRooms, setLastAutoFilledRooms] = useState<string[]>([]);
+
+  const invalidateReports = useCallback(() => {
+    reportGeneration.current += 1;
+    pendingReports.current.clear();
+    recentUtterancesRef.current = [];
+    setIsProcessing(false);
+  }, []);
+
+  useLayoutEffect(invalidateReports, [invalidateReports, incomingShiftKey, header.outgoingPsw, isLocked]);
 
   // Modals, drawers & inline confirmation
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState<boolean>(false);
@@ -529,33 +545,53 @@ export default function App() {
       speechEndTime?: number,
       targetLanguage?: string
     ) => {
-      setLiveTranscript(transcriptText);
+      const generation = reportGeneration.current;
+      const request = ++latestReport.current;
+      pendingReports.current.add(request);
+      const requestRows = rowsRef.current;
+      const requestUnitNote = anythingElseRef.current;
+      const context = recentUtterancesRef.current;
+      recentUtterancesRef.current = [...context.slice(-1), transcriptText];
+      const isCurrent = () => generation === reportGeneration.current && request === latestReport.current;
       setIsProcessing(true);
 
       try {
         const result = await parseTranscriptToHandoffStream(
           transcriptText,
           language,
-          rowsRef.current,
-          callbacks,
-          recentUtterancesRef.current,
+          requestRows,
+          callbacks && {
+            onFirstToken: (time) => { if (isCurrent()) callbacks.onFirstToken?.(time); },
+            onEarlyTranslation: (text) => { if (isCurrent()) callbacks.onEarlyTranslation?.(text); },
+          },
+          context,
           speechEndTime,
           targetLanguage
         );
 
-        // Keep last 2 utterances for minimal context
-        recentUtterancesRef.current = [...recentUtterancesRef.current.slice(-1), transcriptText];
+        if (generation !== reportGeneration.current) return;
+        const liveRows = rowsRef.current;
+        const mergedRows = mergeReportUpdates(liveRows, requestRows, result.updatedRows);
+        const affectedRooms = (result.matchedRooms || []).filter((room) => {
+          const live = liveRows.find((row) => row.room === room);
+          return live && requestRows.some((row) => row.room === room && row.residentName === live.residentName);
+        });
+        rowsRef.current = mergedRows;
+        setRows((current) => current === liveRows ? mergedRows : mergeReportUpdates(current, requestRows, result.updatedRows));
 
-        setTranscriptLanguage(result.detectedSourceLanguage || language);
-        setTranslatedTranscript(result.translatedTranscript !== transcriptText.trim() ? result.translatedTranscript : '');
-        setTranslationConfidence(result.translationConfidence);
-        setRows(result.updatedRows);
-        setUnassignedExtractions(result.unassignedExtractions || []);
-        setLastAutoFilledRooms(result.matchedRooms || []);
-        if (result.anythingElse) {
-          setAnythingElse(result.anythingElse);
+        if (isCurrent()) {
+          setLiveTranscript(transcriptText);
+          setTranscriptLanguage(result.detectedSourceLanguage || language);
+          setTranslatedTranscript(result.translatedTranscript !== transcriptText.trim() ? result.translatedTranscript : '');
+          setTranslationConfidence(result.translationConfidence);
+          setUnassignedExtractions(result.unassignedExtractions || []);
+          setLastAutoFilledRooms(affectedRooms);
+          if (result.anythingElse) {
+            const extractedNote = result.anythingElse;
+            setAnythingElse((current) => current === requestUnitNote ? extractedNote : current);
+          }
+          setOpenQuestions(result.openQuestions);
         }
-        setOpenQuestions(result.openQuestions);
 
         // Sync Stop & Watch escalations cleanly from updated rows
         const nowTime = new Date().toLocaleTimeString([], {
@@ -564,7 +600,12 @@ export default function App() {
         });
         setEscalations((prev) => {
           let next = [...prev];
-          result.updatedRows.forEach((r) => {
+          mergedRows.forEach((r, index) => {
+            if (!affectedRooms.includes(r.room)) return;
+            const before = liveRows[index];
+            if (r.changeCodes === before.changeCodes && r.changeNote === before.changeNote &&
+              r.toldNurse === before.toldNurse && r.nurseInitials === before.nurseInitials &&
+              r.mltcDetails.qualitativeObservations === before.mltcDetails.qualitativeObservations) return;
             const codes = r.changeCodes?.value || [];
             const existingIdx = next.findIndex((e) => e.room === r.room);
             if (codes.length > 0) {
@@ -603,10 +644,19 @@ export default function App() {
 
         return result;
       } catch (err) {
+        if (generation !== reportGeneration.current) return;
+        if (isCurrent()) {
+          setLiveTranscript(transcriptText);
+          setTranscriptLanguage(language);
+          setTranslatedTranscript('');
+        }
         console.error('Failed to parse transcript:', err);
         return null;
       } finally {
-        setIsProcessing(false);
+        if (generation === reportGeneration.current) {
+          pendingReports.current.delete(request);
+          setIsProcessing(pendingReports.current.size > 0);
+        }
       }
     },
     []
@@ -725,6 +775,7 @@ export default function App() {
 
   // Load a demo scenario
   const handleLoadScenario = (scenario: DemoScenario) => {
+    invalidateReports();
     setLiveTranscript(scenario.rawTranscript);
     setTranscriptLanguage(scenario.language);
     setTranslatedTranscript(scenario.expectedTranslation);
@@ -842,6 +893,7 @@ export default function App() {
 
   // Reset to initial clean state
   const handleClearSheet = () => {
+    invalidateReports();
     clearHandoffEditorDrafts();
     try {
       window.localStorage.removeItem(STORAGE_KEY);
@@ -1047,6 +1099,7 @@ export default function App() {
 
   // Confirm and Submit handoff
   const handleConfirmAndSubmit = (overrideReason?: string) => {
+    if (isProcessing) return;
     setIsLocked(true);
     setIsConfirmModalOpen(false);
 
@@ -1203,6 +1256,7 @@ export default function App() {
                   onUpdateRow={handleUpdateRow}
                   interfaceLanguage={interfaceLanguage}
                   resetVersion={resetVersion}
+                  shiftKey={incomingShiftKey}
                   toolbarActions={unitNotesAction}
                 />
               )}
@@ -1280,7 +1334,7 @@ export default function App() {
               </div>
             </div>
 
-            <WorkspaceFooter sticky>
+            <WorkspaceFooter>
               {confirmReset ? (
                 <div className="cb-page-actions">
                   <span>{l10n("Reset all entries?")}</span>
@@ -1293,7 +1347,7 @@ export default function App() {
               {totalPendingCount > 0 && !isLocked && (
                 <Button onClick={handleAcceptAllPending}><CheckCheck />{" " + l10n("Accept pending (")}{totalPendingCount})</Button>
               )}
-              <Button variant="primary" onClick={() => setIsConfirmModalOpen(true)} disabled={isLocked}>
+              <Button variant="primary" onClick={() => setIsConfirmModalOpen(true)} disabled={isLocked || isProcessing}>
                 <CheckCircle />{" " + l10n("Review handoff")}
               </Button>
             </WorkspaceFooter>

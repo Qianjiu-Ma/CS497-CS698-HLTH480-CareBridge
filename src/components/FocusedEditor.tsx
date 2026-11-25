@@ -2,7 +2,7 @@ import { Check, X } from 'lucide-react';
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { l10n } from '../utils/localization';
 import { useOverlayScrollbars } from '../utils/overlayScrollbars';
-import { Button, ControlledDialog } from './WorkspaceUi';
+import { Button, ControlledDialog, DraftDiscard } from './WorkspaceUi';
 
 type Props = {
   title: string;
@@ -22,16 +22,11 @@ export function FocusedEditor({ title, subtitle, sections, activeSection, childr
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [open, setOpen] = useState(true);
   const body = useRef<HTMLDivElement>(null);
-  const keepEditing = useRef<HTMLButtonElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
   const previousScroll = useRef(0);
   useOverlayScrollbars(body, 'y');
 
   useLayoutEffect(() => { body.current?.scrollTo(0, 0); }, [activeSection]);
-
-  useLayoutEffect(() => {
-    if (confirmDiscard) keepEditing.current?.focus();
-  }, [confirmDiscard]);
 
   function resume() {
     setConfirmDiscard(false);
@@ -72,14 +67,7 @@ export function FocusedEditor({ title, subtitle, sections, activeSection, childr
             </Button>
           </footer>}
         </form>
-        {confirmDiscard && <div className="cb-editor-discard">
-          <h3>{l10n('Discard draft?')}</h3>
-          <p>{l10n('Unsaved changes will be lost.')}</p>
-          <div className="cb-editor-footer">
-            <Button ref={keepEditing} onClick={resume}>{l10n('Keep editing')}</Button>
-            <Button variant="danger" onClick={() => { onDiscard(); setOpen(false); }}>{l10n('Discard')}</Button>
-          </div>
-        </div>}
+        {confirmDiscard && <DraftDiscard onKeepEditing={resume} onDiscard={() => { onDiscard(); setOpen(false); }} />}
       </div>
     </ControlledDialog>
   );

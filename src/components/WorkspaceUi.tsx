@@ -1,6 +1,6 @@
 import { l10n } from '../utils/localization';
 import { forwardRef, ReactNode, ButtonHTMLAttributes, useLayoutEffect, useRef, useState } from 'react';
-import { dismissDialog } from '../utils/dialogMotion';
+import { dismissDialog, handleDialogEscape } from '../utils/dialogMotion';
 import { ShieldCheck } from 'lucide-react';
 import { useOverlayScrollbars } from '../utils/overlayScrollbars';
 
@@ -17,25 +17,10 @@ export const PageHeader = forwardRef<HTMLHeadingElement, {
   </header>
 ));
 
-export function WorkspaceFooter({ children, notice, sticky = false }: {
-  children?: ReactNode; notice?: string; sticky?: boolean;
+export function WorkspaceFooter({ children, notice }: {
+  children?: ReactNode; notice?: string;
 }) {
-  const footer = useRef<HTMLElement>(null);
-  useLayoutEffect(() => {
-    const element = footer.current;
-    if (!sticky || !element) return;
-    const style = document.documentElement.style;
-    const measure = () => style.setProperty('--cb-handoff-actions-block', element.offsetHeight + 'px');
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => {
-      observer.disconnect();
-      style.removeProperty('--cb-handoff-actions-block');
-    };
-  }, [sticky]);
-
-  return <footer ref={footer} className={sticky ? 'cb-workspace-footer cb-workspace-footer--sticky' : 'cb-workspace-footer'}>
+  return <footer className="cb-workspace-footer">
     <p><ShieldCheck /> {notice || l10n("Decision support only · Clinical decisions remain with the nurse.")}</p>
     {children && <div className="cb-footer-actions">{children}</div>}
   </footer>;
@@ -46,6 +31,26 @@ export const Button = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLBut
 }>(({ variant = 'secondary', className = '', type = 'button', ...props }, ref) => (
   <button {...props} ref={ref} type={type} className={'cb-button cb-button--' + variant + ' ' + className} />
 ));
+
+export function DraftDiscard({ titleId, context, onKeepEditing, onDiscard }: {
+  titleId?: string;
+  context?: ReactNode;
+  onKeepEditing: () => void;
+  onDiscard: () => void;
+}) {
+  const keepEditing = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => { keepEditing.current?.focus(); }, []);
+
+  return <div className="cb-editor-discard">
+    <h3 id={titleId}>{l10n('Discard draft?')}</h3>
+    {context && <p>{context}</p>}
+    <p>{l10n('Unsaved changes will be lost.')}</p>
+    <div className="cb-editor-footer">
+      <Button ref={keepEditing} onClick={onKeepEditing}>{l10n('Keep editing')}</Button>
+      <Button variant="danger" onClick={onDiscard}>{l10n('Discard')}</Button>
+    </div>
+  </div>;
+}
 
 export function StatusToast({ children, announce = true }: { children?: ReactNode; announce?: boolean }) {
   return <div className={children ? 'cb-toast' : 'sr-only'} role={announce ? 'status' : undefined}>{children}</div>;
@@ -91,6 +96,7 @@ export function ControlledDialog({ open, onDismiss, onAfterClose, label, classNa
 
   return (
     <dialog ref={ref} className={'cb-controlled-dialog no-print ' + className} aria-label={label}
+      onKeyDown={(event) => { if (open) handleDialogEscape(event, onDismiss); }}
       onCancel={(event) => {
         event.preventDefault();
         if (open) onDismiss();
