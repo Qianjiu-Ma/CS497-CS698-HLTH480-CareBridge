@@ -1,3 +1,4 @@
+import { ControlledDialog } from './WorkspaceUi';
 import { speechLocaleFor } from '../utils/translator';
 import { i18n, l10n } from '../utils/localization';
 import React, { useState } from 'react';
@@ -207,13 +208,17 @@ interface StopAndWatchDetailModalProps {
   config: ReturnType<typeof getCodeConfig> & object;
   tierMeta: typeof TIER_METADATA[SeverityTier];
   onClose: () => void;
+  embedded?: boolean;
 }
 
 export const StopAndWatchDetailModal: React.FC<StopAndWatchDetailModalProps> = ({
   config,
   tierMeta,
   onClose,
+  embedded = false,
 }) => {
+  const [open, setOpen] = React.useState(true);
+  const dismiss = embedded ? onClose : () => setOpen(false);
   const IconComponent = getStopAndWatchIcon(config.id);
 
   const handleSpeak = () => {
@@ -224,15 +229,8 @@ export const StopAndWatchDetailModal: React.FC<StopAndWatchDetailModalProps> = (
     window.speechSynthesis.speak(utterance);
   };
 
-  return (
-    <div
-      className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4 backdrop-blur-2xs"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden border border-slate-200"
-        onClick={(e) => e.stopPropagation()}
-      >
+  const content = (
+    <div className={embedded ? 'bg-white w-full' : 'bg-white rounded-xl overflow-hidden border border-slate-200'}>
         {/* Modal Header */}
         <div className={`p-4 border-b flex items-start justify-between gap-3 ${tierMeta.badgeBg} ${tierMeta.badgeBorder}`}>
           <div className="flex items-center gap-3">
@@ -263,7 +261,7 @@ export const StopAndWatchDetailModal: React.FC<StopAndWatchDetailModalProps> = (
               <Volume2 className="w-4 h-4" />
             </button>
             <button
-              onClick={onClose}
+              onClick={dismiss}
               className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/60 cursor-pointer transition-colors"
               title={l10n("Close")}
             >
@@ -317,13 +315,18 @@ export const StopAndWatchDetailModal: React.FC<StopAndWatchDetailModalProps> = (
             {l10n("Tap anywhere to close · INTERACT™ Early Warning")}
           </span>
           <button
-            onClick={onClose}
+            onClick={dismiss}
             className="px-4 py-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded-lg font-bold text-xs shadow-xs cursor-pointer transition-colors"
           >
             {l10n("Got it")}
           </button>
         </div>
-      </div>
     </div>
+  );
+  return embedded ? content : (
+    <ControlledDialog open={open} onDismiss={dismiss} onAfterClose={onClose}
+      label={l10n(config.plainLabel || config.label)} className="cb-motion-dialog max-w-md">
+      {content}
+    </ControlledDialog>
   );
 };

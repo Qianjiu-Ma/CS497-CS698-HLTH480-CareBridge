@@ -1,6 +1,9 @@
+import { ControlledDialog } from './WorkspaceUi';
+import type { OpenResidentEditor } from './ResidentEditor';
 import { l10n } from '../utils/localization';
+import { useOverlayScrollbars } from '../utils/overlayScrollbars';
 import { ClinicalText } from './ClinicalText';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { AlertThresholds, HandoffRow } from '../types/handoff';
 import {
   Check,
@@ -25,6 +28,7 @@ import { getResidentStatus } from '../utils/residentStatus';
 
 interface HandoffTableProps {
   rows: HandoffRow[];
+  onEdit: OpenResidentEditor;
   onUpdateRow: (room: string, updated: Partial<HandoffRow>) => void;
   onAcceptAllPending: () => void;
   onAcceptCell: (
@@ -46,6 +50,7 @@ interface HandoffTableProps {
 export const HandoffTable: React.FC<HandoffTableProps> = ({
   rows,
   onUpdateRow,
+  onEdit,
   onAcceptAllPending,
   onAcceptCell,
   onRejectCell,
@@ -56,8 +61,8 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
 
   interfaceLanguage = 'en',
 }) => {
-  const [editingCell, setEditingCell] = useState<{ room: string; field: string } | null>(null);
-  const [editValue, setEditValue] = useState<string>('');
+  const tableScroller = useRef<HTMLDivElement>(null);
+  useOverlayScrollbars(tableScroller, 'x');
   const [activeSourcePopover, setActiveSourcePopover] = useState<{
     room: string;
     field: string;
@@ -65,15 +70,8 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
   } | null>(null);
   const tableLanguage = interfaceLanguage;
 
-  // Close source popover on Escape
-  useEffect(() => {
-    if (!activeSourcePopover) return;
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setActiveSourcePopover(null);
-    };
-    window.addEventListener('keydown', handleEsc);
-    return () => window.removeEventListener('keydown', handleEsc);
-  }, [activeSourcePopover]);
+  const [sourceClosing, setSourceClosing] = useState(false);
+  const closeSource = () => setSourceClosing(true);
 
   const toggleRowExpand = (room: string) => {
     const row = rows.find((r) => r.room === room);
@@ -82,39 +80,6 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
     }
   };
 
-  const startEditing = (room: string, field: string, currentValue: string) => {
-    if (isLocked) return;
-    setEditingCell({ room, field });
-    setEditValue(currentValue);
-  };
-
-  const saveEdit = (room: string, field: string) => {
-    const row = rows.find((r) => r.room === room);
-    if (!row) return;
-
-    if (field === 'done') {
-      onUpdateRow(room, {
-        done: { value: editValue, isPendingConfirmation: false, lastEditedBy: 'Staff Inline' },
-      });
-    } else if (field === 'notDoneNextShift') {
-      onUpdateRow(room, {
-        notDoneNextShift: {
-          value: editValue,
-          isPendingConfirmation: false,
-          lastEditedBy: 'Staff Inline',
-        },
-      });
-    } else if (field === 'changeNote') {
-      onUpdateRow(room, {
-        changeNote: {
-          value: editValue,
-          isPendingConfirmation: false,
-          lastEditedBy: 'Staff Inline',
-        },
-      });
-    }
-    setEditingCell(null);
-  };
 
   const totalPendingCount = rows.reduce((acc, row) => {
     let count = 0;
@@ -161,7 +126,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
       </div>
 
       {/* Main Table */}
-      <div className="overflow-x-auto">
+      <div ref={tableScroller} className="overflow-x-auto" role="region" aria-label={l10n("All residents")} tabIndex={0}>
         <table className="w-full text-start text-xs border-collapse">
           <thead>
             <tr className="bg-slate-50/70 text-slate-500 text-[11px] font-semibold border-b border-slate-200">
@@ -269,34 +234,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                         row.done?.isPendingConfirmation ? 'bg-amber-50/70' : ''
                       }`}
                     >
-                      {editingCell?.room === row.room && editingCell.field === 'done' ? (
-                        <div className="space-y-1.5">
-                          <textarea dir="auto"
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            rows={2}
-                            className="w-full text-xs p-1.5 border border-teal-500 rounded bg-white text-slate-900 focus:outline-none"
-                            autoFocus
-                          />
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => saveEdit(row.room, 'done')}
-                              className="px-2 py-0.5 bg-teal-700 text-white rounded text-[11px] font-semibold cursor-pointer"
-                            >
-                              {l10n("Save")}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setEditingCell(null)}
-                              className="px-2 py-0.5 bg-slate-200 text-slate-700 rounded text-[11px] cursor-pointer"
-                            >
-                              {l10n("Cancel")}
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-1">
+                      <div className="space-y-1">
                           {(() => {
                             const originalDone = row.done?.value || '';
                             const displayDone = originalDone;
@@ -306,7 +244,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                               <button
                                 type="button"
                                 disabled={isLocked}
-                                onClick={() => startEditing(row.room, 'done', originalDone)}
+                                aria-haspopup="dialog" onClick={(event) => onEdit(row.room, "care", event.currentTarget)}
                                 className="w-full text-start cursor-pointer disabled:cursor-default text-slate-900 hover:text-slate-700 leading-snug"
                                 title={isLocked ? undefined : l10n("Click to edit")}
                               >
@@ -365,7 +303,6 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                             </div>
                           )}
                         </div>
-                      )}
                     </td>
 
                     {/* Column 3: Next shift */}
@@ -377,35 +314,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                           : ''
                       }`}
                     >
-                      {editingCell?.room === row.room &&
-                      editingCell.field === 'notDoneNextShift' ? (
-                        <div className="space-y-1.5">
-                          <textarea dir="auto"
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            rows={2}
-                            className="w-full text-xs p-1.5 border border-teal-500 rounded bg-white text-slate-900 focus:outline-none"
-                            autoFocus
-                          />
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => saveEdit(row.room, 'notDoneNextShift')}
-                              className="px-2 py-0.5 bg-teal-700 text-white rounded text-[11px] font-semibold cursor-pointer"
-                            >
-                              {l10n("Save")}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setEditingCell(null)}
-                              className="px-2 py-0.5 bg-slate-200 text-slate-700 rounded text-[11px] cursor-pointer"
-                            >
-                              {l10n("Cancel")}
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-1.5">
+                      <div className="space-y-1.5">
                           {(() => {
                             const originalNotDone = row.notDoneNextShift?.value || '';
                             const displayNotDone = originalNotDone;
@@ -417,9 +326,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                                 <button
                                   type="button"
                                   disabled={isLocked}
-                                  onClick={() =>
-                                    startEditing(row.room, 'notDoneNextShift', originalNotDone)
-                                  }
+                                  aria-haspopup="dialog" onClick={(event) => onEdit(row.room, "next", event.currentTarget)}
                                   className="w-full text-start cursor-pointer disabled:cursor-default text-slate-400 hover:text-slate-600"
                                   title={isLocked ? undefined : l10n("Click to add note")}
                                 >
@@ -434,9 +341,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                                   <button
                                     type="button"
                                     disabled={isLocked}
-                                    onClick={() =>
-                                      startEditing(row.room, 'notDoneNextShift', originalNotDone)
-                                    }
+                                    aria-haspopup="dialog" onClick={(event) => onEdit(row.room, "next", event.currentTarget)}
                                     className="w-full text-start cursor-pointer disabled:cursor-default text-slate-900 hover:text-slate-700 leading-snug font-medium"
                                     title={isLocked ? undefined : l10n("Click to edit")}
                                   >
@@ -523,7 +428,6 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                             </div>
                           )}
                         </div>
-                      )}
                     </td>
 
                     {/* Column 4: Stop & Watch Changes */}
@@ -535,34 +439,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                           : ''
                       }`}
                     >
-                      {editingCell?.room === row.room && editingCell.field === 'changeNote' ? (
-                        <div className="space-y-1.5">
-                          <textarea dir="auto"
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            rows={2}
-                            className="w-full text-xs p-1.5 border border-teal-500 rounded bg-white text-slate-900 focus:outline-none"
-                            autoFocus
-                          />
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => saveEdit(row.room, 'changeNote')}
-                              className="px-2 py-0.5 bg-teal-700 text-white rounded text-[11px] font-semibold cursor-pointer"
-                            >
-                              {l10n("Save")}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setEditingCell(null)}
-                              className="px-2 py-0.5 bg-slate-200 text-slate-700 rounded text-[11px] cursor-pointer"
-                            >
-                              {l10n("Cancel")}
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-1.5">
+                      <div className="space-y-1.5">
                           {hasCodes ? (
                             <div className="flex flex-wrap items-center gap-1">
                               {(row.changeCodes?.value || []).map((codeId) => (
@@ -593,9 +470,7 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                               <button
                                 type="button"
                                 disabled={isLocked}
-                                onClick={() =>
-                                  startEditing(row.room, 'changeNote', originalChangeNote)
-                                }
+                                aria-haspopup="dialog" onClick={(event) => onEdit(row.room, "note", event.currentTarget, true)}
                                 className="w-full text-start cursor-pointer disabled:cursor-default text-slate-800 hover:text-slate-600 leading-snug"
                                 title={isLocked ? undefined : l10n("Click to edit")}
                               >
@@ -649,56 +524,17 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                             </div>
                           )}
                         </div>
-                      )}
                     </td>
 
                     {/* Column 5: Told Nurse? */}
                     <td className="py-2.5 px-3 align-top">
                       <div className="space-y-1.5">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(row.toldNurse?.value)}
-                            disabled={isLocked}
-                            onChange={(e) => {
-                              const checked = e.target.checked;
-                              onUpdateRow(row.room, {
-                                toldNurse: { value: checked, isPendingConfirmation: false },
-                                nurseInitials: {
-                                  value: checked ? row.nurseInitials?.value || 'RN (KL)' : '',
-                                  isPendingConfirmation: false,
-                                },
-                              });
-                            }}
-                            className="w-4 h-4 text-teal-700 rounded border-slate-300 focus:ring-teal-700"
-                          />
-                          <span
-                            className={`font-medium text-xs ${
-                              row.toldNurse?.value ? 'text-emerald-800' : 'text-slate-600'
-                            }`}
-                          >
-                            {row.toldNurse?.value ? l10n("Notified") : l10n("Not told")}
-                          </span>
-                        </label>
-
-                        {row.toldNurse?.value && (
-                          <input
-                            type="text"
-                            value={row.nurseInitials?.value || 'RN (KL)'}
-                            disabled={isLocked}
-                            onChange={(e) =>
-                              onUpdateRow(row.room, {
-                                nurseInitials: {
-                                  value: e.target.value,
-                                  isPendingConfirmation: false,
-                                },
-                              })
-                            }
-                            className="w-24 px-1.5 py-0.5 border border-slate-200 rounded text-[11px] bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-700"
-                            placeholder={l10n("RN (KL)")}
-                          />
-                        )}
-
+                        <button type="button" disabled={isLocked} aria-haspopup="dialog"
+                          className="text-start font-semibold text-xs min-h-8"
+                          onClick={(event) => onEdit(row.room, 'flags', event.currentTarget)}>
+                          {row.toldNurse?.value ? l10n("Notified") : l10n("Not told")}
+                        </button>
+                        {row.toldNurse?.value && row.nurseInitials?.value && <p><bdi>{row.nurseInitials.value}</bdi></p>}
                         {status.needsNurseAction && !row.toldNurse?.value && (
                           <div
                             className={`text-[11px] font-semibold ${
@@ -763,142 +599,25 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
                             </div>
                           )}
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
-                            <div className="p-3">
-                              <label className="block text-[11px] font-medium text-slate-500 mb-1">
-                                {l10n("Fluids (mL)")}
-                              </label>
-                              <input
-                                type="number"
-                                value={row.mltcDetails.fluidIntakeMl?.value ?? ''}
-                                disabled={isLocked}
-                                onChange={(e) => {
-                                  const val = e.target.value ? Number(e.target.value) : null;
-                                  onUpdateRow(row.room, {
-                                    mltcDetails: {
-                                      ...row.mltcDetails,
-                                      fluidIntakeMl: { value: val, isPendingConfirmation: false },
-                                    },
-                                  });
-                                }}
-                                className="w-full tabular-nums text-xs p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-700"
-                              />
-                            </div>
-
-                            <div className="p-3">
-                              <label className="block text-[11px] font-medium text-slate-500 mb-1">
-                                {l10n("Weight (kg)")}
-                              </label>
-                              <input
-                                type="number"
-                                step="0.1"
-                                value={row.mltcDetails.weightKg?.value ?? ''}
-                                disabled={isLocked}
-                                onChange={(e) => {
-                                  const val = e.target.value ? Number(e.target.value) : null;
-                                  onUpdateRow(row.room, {
-                                    mltcDetails: {
-                                      ...row.mltcDetails,
-                                      weightKg: { value: val, isPendingConfirmation: false },
-                                    },
-                                  });
-                                }}
-                                className="w-full tabular-nums text-xs p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-700"
-                              />
-                            </div>
-
-                            <div className="p-3">
-                              <label className="block text-[11px] font-medium text-slate-500 mb-1">
-                                {l10n("Bowel movement")}
-                              </label>
-                              <div className="flex items-center gap-1.5">
-                                <input
-                                  type="text"
-                                  value={row.mltcDetails.bowelMovement?.value || ''}
-                                  disabled={isLocked}
-                                  onChange={(e) => {
-                                    onUpdateRow(row.room, {
-                                      mltcDetails: {
-                                        ...row.mltcDetails,
-                                        bowelMovement: {
-                                          value: e.target.value,
-                                          isPendingConfirmation: false,
-                                        },
-                                      },
-                                    });
-                                  }}
-                                  className="flex-1 min-w-0 text-xs p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-700"
-                                />
-                                <input
-                                  type="number"
-                                  min={0}
-                                  value={row.mltcDetails.hoursSinceLastBM?.value ?? ''}
-                                  disabled={isLocked}
-                                  onChange={(e) => {
-                                    const val = e.target.value ? Number(e.target.value) : null;
-                                    onUpdateRow(row.room, {
-                                      mltcDetails: {
-                                        ...row.mltcDetails,
-                                        hoursSinceLastBM: {
-                                          value: val,
-                                          isPendingConfirmation: false,
-                                        },
-                                      },
-                                    });
-                                  }}
-                                  className="w-14 tabular-nums text-xs p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-700"
-                                  aria-label={l10n("Hours since last bowel movement for Room {{p1}}", { p1: row.room })}
-                                  placeholder="0"
-                                />
-                                <span className="text-[11px] text-slate-500 shrink-0">{l10n("hrs")}</span>
-                              </div>
-                            </div>
-
-                            <div className="p-3">
-                              <label className="block text-[11px] font-medium text-slate-500 mb-1">
-                                {l10n("Repositioned")}
-                              </label>
-                              <input
-                                type="text"
-                                value={row.mltcDetails.lastRepositionTime?.value || ''}
-                                disabled={isLocked}
-                                onChange={(e) => {
-                                  onUpdateRow(row.room, {
-                                    mltcDetails: {
-                                      ...row.mltcDetails,
-                                      lastRepositionTime: {
-                                        value: e.target.value,
-                                        isPendingConfirmation: false,
-                                      },
-                                    },
-                                  });
-                                }}
-                                className="w-full tabular-nums text-xs p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-700"
-                              />
-                            </div>
-                          </div>
-
                           <div className="p-3">
-                            <label className="block text-[11px] font-medium text-slate-500 mb-1">
-                              {l10n("Observations & mood")}
-                            </label>
-                            <textarea dir="auto"
-                              value={row.mltcDetails.qualitativeObservations?.value || ''}
-                              disabled={isLocked}
-                              onChange={(e) => {
-                                onUpdateRow(row.room, {
-                                  mltcDetails: {
-                                    ...row.mltcDetails,
-                                    qualitativeObservations: {
-                                      value: e.target.value,
-                                      isPendingConfirmation: false,
-                                    },
-                                  },
-                                });
-                              }}
-                              rows={2}
-                              className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-700"
-                            />
+                            <dl className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                              <div><dt>{l10n("Fluids (mL)")}</dt><dd>{row.mltcDetails.fluidIntakeMl?.value ?? '—'}</dd></div>
+                              <div><dt>{l10n("Weight (kg)")}</dt><dd>{row.mltcDetails.weightKg?.value ?? '—'}</dd></div>
+                              <div><dt>{l10n("Bowel movement")}</dt><dd>{row.mltcDetails.bowelMovement?.value || '—'}
+                                {row.mltcDetails.hoursSinceLastBM?.value != null && <span> · {row.mltcDetails.hoursSinceLastBM.value} {l10n("hrs")}</span>}
+                              </dd></div>
+                              <div><dt>{l10n("Repositioned")}</dt><dd>{row.mltcDetails.lastRepositionTime?.value || '—'}</dd></div>
+                            </dl>
+                            {!isLocked && <button type="button" aria-haspopup="dialog"
+                              className="min-h-9 font-semibold text-teal-800"
+                              onClick={(event) => onEdit(row.room, 'metrics', event.currentTarget)}>{l10n("Edit measurements")}</button>}
+                          </div>
+                          <div className="p-3">
+                            <p className="font-semibold">{l10n("Observations & mood")}</p>
+                            <ClinicalText text={row.mltcDetails.qualitativeObservations?.value || ''} />
+                            {!isLocked && <button type="button" aria-haspopup="dialog"
+                              className="min-h-9 font-semibold text-teal-800"
+                              onClick={(event) => onEdit(row.room, 'note', event.currentTarget)}>{l10n("Edit")}</button>}
                           </div>
                         </div>
                       </td>
@@ -913,21 +632,17 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
 
       {/* Transcript Source Quote Popover */}
       {activeSourcePopover && (
-        <div
-          className="fixed inset-0 bg-slate-900/40 z-50 flex items-center justify-center p-4"
-          onClick={() => setActiveSourcePopover(null)}
-        >
-          <div
-            className="bg-white rounded-xl shadow-xl max-w-md w-full p-4 space-y-3 border border-slate-200"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <ControlledDialog open={!sourceClosing} label={l10n("Source Excerpt ·")} onDismiss={closeSource}
+          onAfterClose={() => { setActiveSourcePopover(null); setSourceClosing(false); }}
+          className="cb-motion-dialog max-w-md">
+          <div className="bg-white rounded-xl shadow-xl w-full p-4 space-y-3 border border-slate-200">
             <div className="flex items-center justify-between pb-2 border-b border-slate-200">
               <div className="text-xs font-bold text-slate-900">
                 {l10n("Source Excerpt ·") + " "}{activeSourcePopover.field}{" " + l10n("(Room") + " "}{activeSourcePopover.room})
               </div>
               <button
                 type="button"
-                onClick={() => setActiveSourcePopover(null)}
+                onClick={closeSource}
                 className="text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -939,14 +654,14 @@ export const HandoffTable: React.FC<HandoffTableProps> = ({
             <div className="flex justify-end">
               <button
                 type="button"
-                onClick={() => setActiveSourcePopover(null)}
+                onClick={closeSource}
                 className="px-3 py-1.5 bg-teal-700 text-white rounded-lg text-xs font-semibold cursor-pointer"
               >
                 {l10n("Close")}
               </button>
             </div>
           </div>
-        </div>
+        </ControlledDialog>
       )}
     </div>
   );

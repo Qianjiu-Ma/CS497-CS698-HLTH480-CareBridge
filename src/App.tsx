@@ -1,6 +1,5 @@
 import { l10n } from './utils/localization';
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
-import { PrototypeBanner } from './components/Banner';
 import { Navigation, ScreenTab } from './components/Navigation';
 import { ShiftHeaderForm } from './components/ShiftHeaderForm';
 import { VoiceControlPanel } from './components/VoiceControlPanel';
@@ -16,8 +15,11 @@ import { SettingsView } from './components/SettingsView';
 import { PrintablePaperSheet } from './components/PrintablePaperSheet';
 import { ResidentRibbon } from './components/ResidentRibbon';
 import { ResidentFocusView } from './components/ResidentFocusView';
+import { ResidentEditor, type OpenResidentEditor, type ResidentSection } from './components/ResidentEditor';
+import { clearHandoffEditorDrafts } from './utils/handoffEditorDraft';
 import { Button, WorkspaceFooter } from './components/WorkspaceUi';
 import { interfaceLocale, loadInterfaceLocale, setInterfaceLocale, useInterfaceLanguage } from './utils/localization';
+import { useCompactLayout } from './utils/useCompactLayout';
 import type { InterfaceLanguage } from './utils/localization';
 
 import {
@@ -108,6 +110,7 @@ function formatShortNurseInitials(nurseName: string): string {
 }
 
 const STORAGE_KEY = 'carebridge_handoff_state_v1';
+const DEFAULT_CHARGE_NURSE = 'K. Lewis, RN';
 
 const EMPTY_INCOMING_PROGRESS: Record<string, string> = {};
 
@@ -116,6 +119,7 @@ interface PersistedHandoffState {
   selectedResidentRoom?: string | 'all';
   interfaceLanguage?: InterfaceLanguage;
   header?: ShiftHeader;
+  chargeNurse?: string;
   rows?: HandoffRow[];
   anythingElse?: string;
   thresholds?: AlertThresholds;
@@ -145,12 +149,15 @@ export default function App() {
 
   const [currentTab, setCurrentTab] = useState<ScreenTab>('handoff');
   const [showUnitNotes, setShowUnitNotes] = useState(false);
+  const [residentEdit, setResidentEdit] = useState<{ room: string; section: ResidentSection; changeNote?: boolean } | null>(null);
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [currentTab]);
   const [selectedResidentRoom, setSelectedResidentRoom] = useState<string | 'all'>(
     initialPersisted.selectedResidentRoom || '102'
   );
+  const compactLayout = useCompactLayout();
+  const residentHeading = useRef<HTMLHeadingElement>(null);
   const interfaceLanguage = useInterfaceLanguage();
   const localeRequest = useRef(0);
   const [localeError, setLocaleError] = useState(false);
@@ -167,6 +174,10 @@ export default function App() {
 
   const [header, setHeader] = useState<ShiftHeader>(
     initialPersisted.header && initialPersisted.header.unit ? initialPersisted.header : DEFAULT_HEADER
+  );
+  const [chargeNurse, setChargeNurse] = useState(() =>
+    typeof initialPersisted.chargeNurse === 'string' && initialPersisted.chargeNurse.trim()
+      ? initialPersisted.chargeNurse.trim() : DEFAULT_CHARGE_NURSE
   );
   const [rows, setRows] = useState<HandoffRow[]>(
     Array.isArray(initialPersisted.rows) && initialPersisted.rows.length > 0
@@ -232,6 +243,7 @@ export default function App() {
         selectedResidentRoom,
         interfaceLanguage,
         header,
+        chargeNurse,
         rows,
         anythingElse,
         thresholds,
@@ -248,6 +260,7 @@ export default function App() {
     selectedResidentRoom,
     interfaceLanguage,
     header,
+    chargeNurse,
     rows,
     anythingElse,
     thresholds,
@@ -829,12 +842,14 @@ export default function App() {
 
   // Reset to initial clean state
   const handleClearSheet = () => {
+    clearHandoffEditorDrafts();
     try {
       window.localStorage.removeItem(STORAGE_KEY);
     } catch {
       // ignore
     }
     setHeader(DEFAULT_HEADER);
+    setChargeNurse(DEFAULT_CHARGE_NURSE);
     setRows(SEED_HANDOFF_ROWS);
     setAnythingElse(SEED_ANYTHING_ELSE);
     setIncomingTaskProgress({});
@@ -1104,21 +1119,27 @@ export default function App() {
   };
 
   const focusedRow = rows.find((r) => r.room === selectedResidentRoom) || rows[0];
+  const editorRow = residentEdit && rows.find((row) => row.room === residentEdit.room);
+  const openResidentEditor: OpenResidentEditor = (room, section, trigger, changeNote) => {
+    if (isLocked) return;
+    trigger.focus({ preventScroll: true });
+    setResidentEdit({ room, section, changeNote });
+  };
   const unitNotesAction = (
-    <Button aria-expanded={showUnitNotes} aria-controls="handoff-unit-notes"
-      onClick={() => setShowUnitNotes(!showUnitNotes)}><FileText />{" " + l10n("Unit notes")}</Button>
+    <Button aria-haspopup="dialog" onClick={(event) => {
+      event.currentTarget.focus({ preventScroll: true });
+      setShowUnitNotes(true);
+    }}><FileText aria-hidden="true" /> {l10n("Unit notes")}</Button>
   );
 
   return (
     <div className="cb-app">
-      {/* 1. Visible Safety & Prototype Banner */}
-      <PrototypeBanner />
-
-      {/* 2. Top Navigation Bar (Sticky Translucent 3-Zone Top Bar) */}
       <Navigation
         currentTab={currentTab}
         onTabChange={setCurrentTab}
         pendingNurseEscalationsCount={pendingNurseCount}
+        shiftHeader={header}
+        chargeNurse={chargeNurse}
         onPrintPaperFallback={() => handlePrintPaperFallback(true)}
         interfaceLanguage={interfaceLanguage}
         onLanguageChange={changeInterfaceLanguage}
@@ -1127,7 +1148,6 @@ export default function App() {
         {l10n('Could not load this language. Try again.')}
       </p>}
 
-      {/* 3. Main Viewport Canvas */}
       <main className="cb-wrap cb-main no-print">
         {/* TAB 1: Main Handoff Sheet */}
         {currentTab === 'handoff' && (
@@ -1188,16 +1208,19 @@ export default function App() {
               )}
 
               {isLocked && unitNotesAction}
-              <div id="handoff-unit-notes" hidden={!showUnitNotes}>
-                {showUnitNotes && <AnythingElseSection value={anythingElse} onChange={setAnythingElse} isLocked={isLocked} />}
-              </div>
 
               {/* Deterministic Clinical Safety & Documentation Alerts */}
               <AlertsPanel
                 alerts={alerts}
                 onMarkPerCarePlan={handleMarkPerCarePlan}
                 onQuickNotifyNurse={handleQuickNotifyNurse}
-                onSelectResident={(room) => setSelectedResidentRoom(room)}
+                onSelectResident={(room) => {
+                  setSelectedResidentRoom(room);
+                  if (compactLayout) requestAnimationFrame(() => {
+                    residentHeading.current?.focus({ preventScroll: true });
+                    residentHeading.current?.scrollIntoView({ block: 'start' });
+                  });
+                }}
                 rows={rows}
                 thresholds={thresholds}
                 escalations={escalations}
@@ -1222,9 +1245,12 @@ export default function App() {
                 <div className="cb-resident-workspace">
                   {selectedResidentRoom !== 'all' ? (
                     <ResidentFocusView
+                      key={focusedRow.room}
+                      headingRef={compactLayout ? residentHeading : undefined}
                       row={focusedRow}
                       allRows={rows}
                       onUpdateRow={handleUpdateRow}
+                      onEdit={openResidentEditor}
                       onSelectResident={setSelectedResidentRoom}
                       staffStamp={header.outgoingPsw}
 
@@ -1237,6 +1263,7 @@ export default function App() {
                     <HandoffTable
                       rows={rows}
                       onUpdateRow={handleUpdateRow}
+                      onEdit={openResidentEditor}
                       onAcceptAllPending={handleAcceptAllPending}
                       onAcceptCell={handleAcceptCell}
                       onRejectCell={handleRejectCell}
@@ -1253,7 +1280,7 @@ export default function App() {
               </div>
             </div>
 
-            <WorkspaceFooter>
+            <WorkspaceFooter sticky>
               {confirmReset ? (
                 <div className="cb-page-actions">
                   <span>{l10n("Reset all entries?")}</span>
@@ -1282,8 +1309,8 @@ export default function App() {
               escalations={escalations}
               rows={rows}
               thresholds={thresholds}
-              unit={header.unit}
-              shift={header.shift}
+              nurseName={chargeNurse}
+              onNurseNameChange={setChargeNurse}
               customCodeTiers={thresholds.customCodeTiers}
               onAcknowledgeEscalation={handleAcknowledgeEscalation}
               onUpdateEscalationNote={handleUpdateEscalationNote}
@@ -1344,7 +1371,6 @@ export default function App() {
           <div>
             <IncomingShiftView
               key={incomingShiftKey}
-              header={header}
               rows={rows}
               anythingElse={anythingElse}
               thresholds={thresholds}
@@ -1379,6 +1405,13 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {currentTab === 'handoff' && showUnitNotes && <AnythingElseSection value={anythingElse} onChange={setAnythingElse}
+        onClose={() => setShowUnitNotes(false)} isLocked={isLocked} />}
+      {currentTab === 'handoff' && residentEdit && editorRow && !isLocked && <ResidentEditor key={editorRow.room}
+        row={editorRow} initialSection={residentEdit.section} editChangeNote={residentEdit.changeNote}
+        staffStamp={header.outgoingPsw} language={interfaceLanguage} thresholds={thresholds}
+        onSave={(patch) => handleUpdateRow(editorRow.room, patch)} onClose={() => setResidentEdit(null)} />}
 
       {/* Stop & Watch Clinical Reference Drawer */}
       <StopAndWatchLegend

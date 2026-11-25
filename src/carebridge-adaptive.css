@@ -1,0 +1,313 @@
+.cb-nav-short,
+.cb-app .cb-resident-picker,
+.cb-shift-glance {
+  display: none;
+}
+
+:dir(rtl) .cb-guide-drawer { --cb-drawer-entry: -12px; }
+:dir(rtl) .cb-progress-fill { transform-origin: right center; }
+.cb-roster-status { flex: none; }
+
+@media screen {
+  :root {
+    --cb-safe-top: env(safe-area-inset-top, 0px);
+    --cb-safe-bottom: env(safe-area-inset-bottom, 0px);
+    --cb-safe-left: env(safe-area-inset-left, 0px);
+    --cb-safe-right: env(safe-area-inset-right, 0px);
+    scroll-padding-block-start: calc(var(--cb-header-block, 64px) + var(--cb-safe-top) + 8px);
+  }
+
+  .cb-wrap {
+    --cb-edge-left: max(var(--cb-gutter), var(--cb-safe-left));
+    --cb-edge-right: max(var(--cb-gutter), var(--cb-safe-right));
+    padding-left: var(--cb-edge-left);
+    padding-right: var(--cb-edge-right);
+  }
+
+  .cb-app { padding-block-start: var(--cb-safe-top); }
+  .cb-navigation { inset-block-start: var(--cb-safe-top); }
+  .cb-compact-concern { display: none; }
+}
+
+@media screen and (min-width: 701px) and (max-width: 1050px) {
+  .cb-nav-tabs {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .cb-nav-tabs button {
+    padding: 8px 6px;
+    line-height: 1.2;
+    white-space: normal;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .cb-main { padding-block-start: 24px; }
+  .cb-handoff-grid { grid-template-columns: minmax(148px, 180px) minmax(0, 1fr); gap: 16px; }
+  .cb-resident-columns { grid-template-columns: minmax(0, 1fr); }
+  .cb-resident-next { border-block-start: 1px solid var(--cb-line); }
+  .cb-resident-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  .cb-main .incoming-workspace .layout {
+    grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .cb-main .incoming-workspace .task { min-block-size: 62px; padding-block: 8px; }
+  .cb-main .incoming-workspace .concern { min-block-size: 88px; padding-block: 12px; }
+}
+
+@media screen and (max-width: 700px) {
+  :root {
+    --cb-bottom-clearance: var(--cb-nav-block, calc(64px + var(--cb-safe-bottom)));
+    scroll-padding-block-end: calc(var(--cb-bottom-clearance) + 8px);
+  }
+
+  .cb-app .cb-main { padding-block-end: calc(var(--cb-bottom-clearance) + var(--cb-space)); }
+  .cb-page-heading { margin-block-end: 16px; }
+  .cb-page-subtitle { overflow-wrap: anywhere; }
+  .cb-nav-layout { min-block-size: 54px; padding-block: 4px; }
+  .cb-nav-tools .cb-button { min-inline-size: 44px; padding-inline: 9px; }
+  .cb-context-content { padding-inline: 16px; }
+
+  .cb-nav-tabs {
+    position: fixed;
+    inset-inline: 0;
+    inset-block-end: 0;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 2px;
+    overflow: visible;
+    padding-block: 4px calc(4px + var(--cb-safe-bottom));
+    padding-left: max(4px, var(--cb-safe-left));
+    padding-right: max(4px, var(--cb-safe-right));
+    background: var(--cb-surface);
+    border-block-start: 1px solid var(--cb-line);
+    box-shadow: 0 -4px 18px #172b350a;
+  }
+
+  .cb-nav-tabs button {
+    position: relative;
+    min-inline-size: 0;
+    min-block-size: 54px;
+    height: auto;
+    flex-direction: column;
+    gap: 3px;
+    padding: 5px 2px;
+    border: 0;
+    border-radius: var(--cb-control-radius);
+    font-size: 0.6875rem;
+    line-height: 1.16;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .cb-nav-tabs button[aria-current='page'] { background: var(--cb-accent-soft); }
+  .cb-nav-tabs button svg { inline-size: 20px; block-size: 20px; }
+  .cb-nav-tabs .cb-nav-short { display: block; }
+  .cb-nav-label--wide {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .cb-nav-count {
+    position: absolute;
+    inset-block-start: 2px;
+    inset-inline-start: calc(50% + 6px);
+    line-height: 1.3;
+    padding-inline: 3px;
+  }
+
+  .cb-app .cb-handoff-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .cb-report-toolbar { position: relative; gap: 6px; }
+  .cb-report-toolbar .cb-page-actions { gap: 6px; }
+  .cb-report-toolbar .cb-button { padding-inline: 9px; font-size: 12px; gap: 6px; }
+  .cb-report-toolbar .cb-button > svg { inline-size: 16px; }
+  .cb-report-toolbar .cb-report-more { position: static; }
+  .cb-report-toolbar .cb-report-menu { inline-size: min(320px, 100%); }
+  .cb-handoff-rail .cb-roster { display: none; }
+  .cb-app .cb-resident-picker {
+    display: flex;
+    inline-size: 100%;
+    min-block-size: 60px;
+    justify-content: flex-start;
+    padding: 8px 12px;
+    border-radius: var(--cb-radius);
+    text-align: start;
+  }
+
+  .cb-resident-picker-icon {
+    display: grid;
+    flex: none;
+    place-items: center;
+    inline-size: 34px;
+    block-size: 34px;
+    border-radius: var(--cb-control-radius);
+    background: var(--cb-accent-soft);
+    color: var(--cb-accent);
+  }
+
+  .cb-resident-picker-copy { flex: 1; min-inline-size: 0; overflow-wrap: anywhere; }
+  .cb-resident-picker-copy small { display: block; font-weight: 500; color: var(--cb-muted); }
+  .cb-resident-picker-copy strong { font-size: 15px; }
+  .cb-resident-chooser-head { display: flex; justify-content: space-between; align-items: center; margin-block-end: 8px; gap: 8px; }
+  .cb-resident-chooser-head h2 { font-size: 20px; font-weight: 700; }
+  .cb-resident-chooser .cb-roster-list button { min-block-size: 52px; }
+
+  .cb-handoff .cb-alert-actions button,
+  .cb-app .cb-adaptive-close,
+  .cb-main .emr-archive :is(.shiftlinks button, .archivefooter button),
+  .cb-main .clinical-review-action { min-block-size: 44px; }
+
+  .cb-app .cb-adaptive-close {
+    display: grid;
+    place-items: center;
+    min-inline-size: 44px;
+    flex: none;
+  }
+
+  .cb-app .cb-toast { inset-block-end: calc(var(--cb-bottom-clearance) + 12px); }
+
+  .incoming-workspace .cb-page-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .incoming-workspace .cb-page-heading .cb-page-actions { max-inline-size: min(46vw, 12rem); }
+  .cb-app .cb-shift-glance {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 3px 12px;
+    margin-block-end: 12px;
+    padding: 9px 12px;
+    color: var(--cb-muted);
+    font-size: 13px;
+    font-weight: 650;
+  }
+
+  .cb-main .incoming-workspace .layout { gap: 16px; }
+  .cb-main .incoming-workspace .unit { margin-block-end: 16px; }
+  .cb-main .incoming-workspace .concern { min-block-size: 72px; padding-block: 9px; }
+  .cb-main .incoming-workspace .task { min-block-size: 60px; }
+  .cb-app .cb-compact-concern {
+    display: block;
+    padding: 12px 14px;
+    margin-block-end: 14px;
+    border-radius: var(--cb-radius);
+    background: var(--cb-warning-soft);
+    color: var(--cb-warning);
+    overflow-wrap: anywhere;
+  }
+  .cb-app .cb-compact-concern[data-tone='urgent'] {
+    background: var(--cb-danger-soft);
+    color: var(--cb-danger);
+  }
+
+  .cb-main .clinical-review-row {
+    grid-template-columns: 32px minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .cb-main .clinical-review-symbol { inline-size: 32px; block-size: 32px; }
+  .cb-main .clinical-review-action {
+    grid-column: auto;
+    max-inline-size: 7em;
+    align-items: center;
+    overflow-wrap: anywhere;
+  }
+  .cb-main .clinical-review-finding { font-size: 15px; }
+
+  .cb-app dialog.cb-adaptive-detail[open] {
+    inset: 0;
+    margin: 0;
+    inline-size: 100%;
+    max-inline-size: none;
+    block-size: 100dvh;
+    max-block-size: 100dvh;
+    padding-block: var(--cb-safe-top) var(--cb-safe-bottom);
+    padding-left: var(--cb-safe-left);
+    padding-right: var(--cb-safe-right);
+    border: 0;
+    border-radius: 0;
+    background: var(--cb-surface);
+    box-shadow: none;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scroll-padding-block-start: 5rem;
+  }
+
+  .cb-app dialog.cb-adaptive-sheet[open] {
+    inset: auto 0 0;
+    margin: 0;
+    inline-size: 100%;
+    max-inline-size: none;
+    max-block-size: calc(100dvh - var(--cb-safe-top) - 16px);
+    padding: 16px max(16px, var(--cb-safe-right)) calc(16px + var(--cb-safe-bottom)) max(16px, var(--cb-safe-left));
+    border-radius: var(--cb-dialog-radius) var(--cb-dialog-radius) 0 0;
+    background: var(--cb-surface);
+    overscroll-behavior: contain;
+  }
+
+  .cb-app dialog.cb-guide-drawer[open] {
+    padding: var(--cb-safe-top) var(--cb-safe-right) var(--cb-safe-bottom) var(--cb-safe-left);
+    background: var(--cb-surface);
+  }
+
+  .cb-app .cb-adaptive-head {
+    position: sticky;
+    inset-block-start: var(--cb-safe-top);
+    z-index: 2;
+    background: var(--cb-surface);
+  }
+
+  .cb-adaptive-head > :first-child { min-inline-size: 0; overflow-wrap: anywhere; }
+  .cb-app .cb-review-modal .cb-review-content { border: 0; padding: 16px; }
+  .cb-main .incoming-workspace .dialogbody { padding: 16px; }
+  .cb-app .cb-adaptive-detail .tablewrap { display: none; }
+  .cb-archive-documentation > .resident-documentation > summary {
+    display: list-item;
+    align-content: center;
+    min-block-size: 44px;
+  }
+
+  .cb-app :is(.cb-main, dialog) :is(input:not([type='checkbox'], [type='range']), textarea) {
+    font-size: max(16px, 1rem);
+  }
+}
+
+@media screen and (min-width: 375px) and (max-width: 700px) {
+  .cb-workspace-footer--sticky > p { flex: 1 1 108px; }
+}
+
+/* Leave room for the software keyboard and avoid pinning a large footer in short windows. */
+@media screen and (max-width: 700px) and (min-height: 540px) {
+  :root:has(.cb-workspace-footer--sticky):not(:has(.cb-main :is(textarea, input:not([type='checkbox'], [type='range'])):focus)) {
+    scroll-padding-block-end: calc(var(--cb-bottom-clearance) + var(--cb-handoff-actions-block, 0px) + 8px);
+  }
+
+  .cb-main:not(:has(:is(textarea, input:not([type='checkbox'], [type='range'])):focus)) .cb-workspace-footer--sticky {
+    position: sticky;
+    inset-block-end: var(--cb-bottom-clearance);
+    z-index: 5;
+    margin-left: calc(-1 * var(--cb-edge-left));
+    margin-right: calc(-1 * var(--cb-edge-right));
+    padding-left: var(--cb-edge-left);
+    padding-right: var(--cb-edge-right);
+    padding-block: 8px;
+    background: var(--cb-background);
+    box-shadow: 0 -6px 16px var(--cb-background);
+  }
+}
+
+@media screen and (max-width: 360px) {
+  :root { --cb-gutter: 12px; }
+  .cb-nav-tabs button { font-size: 0.625rem; }
+}

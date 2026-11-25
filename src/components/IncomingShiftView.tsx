@@ -1,11 +1,13 @@
-import { l10n, localizedShift } from '../utils/localization';
+import { cancelDialog, dismissDialog } from '../utils/dialogMotion';
+import { l10n } from '../utils/localization';
+import { useOverlayScrollbars } from '../utils/overlayScrollbars';
 import { ClinicalText } from './ClinicalText';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle, Bandage, BatteryLow, Check, ChevronRight, Clock,
   Droplet, Loader2, PersonStanding, Users, X,
 } from 'lucide-react';
-import { AlertThresholds, HandoffRow, NurseEscalation, ShiftHeader } from '../types/handoff';
+import { AlertThresholds, HandoffRow, NurseEscalation } from '../types/handoff';
 import { getCodeConfig, TIER_METADATA } from '../data/stopAndWatchCodes';
 import { StopAndWatchDetailModal, StopAndWatchIconBadge } from './StopAndWatchIconBadge';
 import { buildIncomingResidents, buildIncomingTasks, IncomingResident, IncomingTask } from '../utils/incomingShift';
@@ -14,7 +16,6 @@ import './IncomingShiftView.css';
 import { Button, PageHeader, StatusToast, WorkspaceFooter } from './WorkspaceUi';
 
 interface IncomingShiftViewProps {
-  header: ShiftHeader;
   rows: HandoffRow[];
   anythingElse: string;
   thresholds: AlertThresholds;
@@ -34,7 +35,7 @@ type Details =
 const equipmentNote = 'Lift battery in the tub room is low; spare is charging at the nursing station.';
 
 export const IncomingShiftView: React.FC<IncomingShiftViewProps> = ({
-  header, rows, anythingElse, thresholds, escalations, noteCompletions,
+  rows, anythingElse, thresholds, escalations, noteCompletions,
   isLocked, onSetTaskDone, onResetTaskProgress, interfaceLanguage = 'en',
 }) => {
   const [showCompleted, setShowCompleted] = useState(false);
@@ -54,6 +55,7 @@ export const IncomingShiftView: React.FC<IncomingShiftViewProps> = ({
     [rows, escalations, thresholds, interfaceLanguage]);
   const attention = residents.filter((resident) => resident.rank > 0).sort((a, b) => b.rank - a.rank);
   const roster = [...residents].sort((a, b) => a.row.room.localeCompare(b.row.room, undefined, { numeric: true }));
+  const priorityCount = attention.filter(({ status }) => status.isUrgent).length;
   const completed = tasks.filter((task) => task.done);
   const remaining = tasks.filter((task) => !task.done);
   const unitNote = anythingElse?.trim();
@@ -83,6 +85,8 @@ export const IncomingShiftView: React.FC<IncomingShiftViewProps> = ({
   }, [details, hasDetails]);
 
   const criterion = codeId ? getCodeConfig(codeId, thresholds.customCodeTiers) : undefined;
+  useOverlayScrollbars(dialog, 'both', hasDetails);
+  useOverlayScrollbars(criteriaDialog, 'both', Boolean(criterion));
   useEffect(() => {
     if (criterion && !criteriaDialog.current?.open) criteriaDialog.current?.showModal();
   }, [criterion]);
@@ -159,12 +163,16 @@ export const IncomingShiftView: React.FC<IncomingShiftViewProps> = ({
     );
   };
 
-  const renderResident = ({ row, codes, status, label, notified, unverified, finding, observation, episode, rank }: IncomingResident) => {
+  const renderResident = ({ row, codes, status, label, notified, unverified, finding, observation, episode, rank, title, summary }: IncomingResident) => {
     const nextShift = row.notDoneNextShift?.value?.trim();
     const residentTasks = tasks.filter((task) => task.room === row.room);
     const labels = status.tier ? TIER_METADATA[status.tier].label : label;
     return (
       <>
+        {rank > 0 && <div className="cb-compact-concern" data-tone={status.isUrgent ? 'urgent' : 'warning'}>
+          <strong>{l10n(title)}</strong>
+          <p>{[summary, l10n(notified)].filter(Boolean).join(' · ')}</p>
+        </div>}
         {rank > 0 && <section className="block">
           <h3>{l10n("Clinical concerns")}</h3>
           <p>{l10n(labels)} · {l10n(notified)}{notified === 'RN notified' && !row.nurseInitials?.isPendingConfirmation && row.nurseInitials?.value
@@ -227,7 +235,7 @@ export const IncomingShiftView: React.FC<IncomingShiftViewProps> = ({
       {isMutable(task) && <div className="actions">
         <Button variant="primary" onClick={() => {
           changeTask(task, !task.done);
-          dialog.current?.close();
+          dismissDialog(dialog.current);
         }}>{task.done ? l10n("Undo completion") : l10n("Mark complete")}</Button>
       </div>}
     </>
@@ -262,7 +270,7 @@ export const IncomingShiftView: React.FC<IncomingShiftViewProps> = ({
         setShowCompleted(false);
         setRecent(null);
         setAnnouncement('Incoming task progress reset.');
-        dialog.current?.close();
+        dismissDialog(dialog.current);
       }}>{l10n("Reset tasks")}</Button></div>;
     } else if (detailTask) {
       title = t(detailTask.title);
@@ -274,10 +282,10 @@ export const IncomingShiftView: React.FC<IncomingShiftViewProps> = ({
       body = renderResident(detailResident);
     }
     return <div className="dialogbody">
-      <div className="dhead">
+      <div className="dhead cb-adaptive-head">
         <div><h2 id="incoming-dialog-title">{l10n(title)}</h2><p className="sub">{subtitle}</p></div>
         <button ref={closeButton} type="button" className="close" aria-label={l10n("Close")}
-          onClick={() => dialog.current?.close()}><X /></button>
+          onClick={() => dismissDialog(dialog.current)}><X /></button>
       </div>
       {body}
     </div>;
@@ -287,14 +295,16 @@ export const IncomingShiftView: React.FC<IncomingShiftViewProps> = ({
 
   return (
     <div className="incoming-workspace" ref={workspace}>
-      <PageHeader title={l10n("My shift")} subtitle={<span title={localizedShift(header.shift)}>
-          {l10n('{{incoming}} · Handoff from {{outgoing}}', { incoming: header.incomingPsw, outgoing: header.outgoingPsw.replace(/,\s*PSW$/i, '') })}
-        </span>} actions={<>
+      <PageHeader title={l10n("My shift")} actions={<>
           <Button aria-haspopup="dialog"
             onClick={(event) => showDetails({ kind: 'residents' }, event.currentTarget)}>
             <Users />{" " + l10n("All residents")}
           </Button>
         </>} />
+      <div className="cb-panel cb-shift-glance">
+        <span>{l10n('{{completed}} of {{total}} tasks done', { completed: completed.length, total: tasks.length })}</span>
+        <span className={priorityCount ? 'cb-urgent' : undefined}>{l10n('Priority attention: {{count}}', { count: priorityCount })}</span>
+      </div>
       {unitNote && <button className="unit" type="button" aria-haspopup="dialog"
         onClick={(event) => showDetails({ kind: 'unit' }, event.currentTarget)}>
         <BatteryLow />
@@ -342,17 +352,17 @@ export const IncomingShiftView: React.FC<IncomingShiftViewProps> = ({
           {l10n("Reset demo")}
         </Button>
       </WorkspaceFooter>
-      <dialog className="cb-motion-dialog" ref={dialog} aria-labelledby="incoming-dialog-title" onClose={() => {
+      <dialog onCancel={cancelDialog} className={'cb-motion-dialog ' + (details?.kind === 'reset' ? 'cb-adaptive-sheet' : 'cb-adaptive-detail')} ref={dialog} aria-labelledby="incoming-dialog-title" onClose={() => {
         setDetails(null);
         setCodeId(null);
         returnFocus();
       }}>
         {hasDetails && renderDialogBody()}
       </dialog>
-      {criterion && <dialog ref={criteriaDialog} className="criteria-dialog" aria-label={l10n("Stop & Watch criteria")}
+      {criterion && <dialog onCancel={cancelDialog} ref={criteriaDialog} className="criteria-dialog cb-adaptive-sheet cb-motion-dialog" aria-label={l10n("Stop & Watch criteria")}
         onClose={() => setCodeId(null)}>
-        <StopAndWatchDetailModal config={criterion} tierMeta={TIER_METADATA[criterion.defaultTier]}
-          onClose={() => criteriaDialog.current?.close()} />
+        <StopAndWatchDetailModal embedded config={criterion} tierMeta={TIER_METADATA[criterion.defaultTier]}
+          onClose={() => dismissDialog(criteriaDialog.current)} />
       </dialog>}
       {recentTask && isMutable(recentTask) && <StatusToast announce={false}>
         <span>{recent.done ? l10n("Task completed") : l10n("Task reopened")}</span>

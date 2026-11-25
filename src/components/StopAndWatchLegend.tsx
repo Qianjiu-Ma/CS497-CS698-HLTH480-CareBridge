@@ -1,5 +1,6 @@
 import { l10n } from '../utils/localization';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
+import { useOverlayScrollbars } from '../utils/overlayScrollbars';
 import {
   Info,
   AlertTriangle,
@@ -26,6 +27,8 @@ export const StopAndWatchLegend: React.FC<StopAndWatchLegendProps> = ({
   isOpen,
   onClose,
 }) => {
+  const scroller = useRef<HTMLDivElement>(null);
+  useOverlayScrollbars(scroller, 'y', isOpen);
   const [selectedCodeId, setSelectedCodeId] = useState<string>('S');
   const [tierFilter, setTierFilter] = useState<'all' | 1 | 2 | 3>('all');
 
@@ -65,8 +68,8 @@ export const StopAndWatchLegend: React.FC<StopAndWatchLegendProps> = ({
 
   return (
     <ControlledDialog open={isOpen} onDismiss={onClose} label={l10n("INTERACT Stop and Watch Reference Guide")}
-      className="cb-guide-drawer cb-motion-drawer" fallbackFocusId="report-more-trigger">
-      <aside className="w-full bg-white h-full border-l border-slate-200 flex flex-col overflow-hidden">
+      className="cb-guide-drawer cb-motion-drawer" fallbackFocusId="report-more-trigger" scrollable={false}>
+      <aside className="w-full bg-white h-full border-s border-slate-200 flex flex-col overflow-hidden">
       {/* Drawer Header */}
       <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-3 bg-slate-50/70">
         <div className="flex items-center gap-2.5">
@@ -84,7 +87,7 @@ export const StopAndWatchLegend: React.FC<StopAndWatchLegendProps> = ({
         <button
           type="button"
           onClick={onClose}
-          className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/60 transition-colors cursor-pointer"
+          className="cb-adaptive-close p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/60 transition-colors cursor-pointer"
           title={l10n("Close guide (Esc)")}
         >
           <X className="w-5 h-5" />
@@ -92,7 +95,7 @@ export const StopAndWatchLegend: React.FC<StopAndWatchLegendProps> = ({
       </div>
 
       {/* Scrollable Body */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-5">
+      <div ref={scroller} className="flex-1 overflow-y-auto p-5 space-y-5">
         {/* Tier Filters */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs font-semibold text-slate-600">

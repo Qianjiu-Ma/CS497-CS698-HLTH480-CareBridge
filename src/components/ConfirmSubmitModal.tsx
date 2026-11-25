@@ -104,10 +104,10 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
   };
 
   return (
-    <ControlledDialog open={isOpen} onDismiss={onClose} label={l10n("Confirm and submit shift handoff")} className="cb-review-modal">
-      <div className="bg-white rounded-xl border border-slate-200 p-5 sm:p-6 space-y-4 text-xs text-slate-800">
+    <ControlledDialog open={isOpen} onDismiss={onClose} label={l10n("Confirm and submit shift handoff")} className="cb-review-modal cb-adaptive-detail cb-motion-dialog">
+      <div className="cb-review-content bg-white rounded-xl border border-slate-200 p-5 sm:p-6 space-y-4 text-xs text-slate-800">
       {/* Header */}
-      <div className="flex items-start justify-between pb-3 border-b border-slate-200">
+      <div className="cb-adaptive-head flex items-start justify-between pb-3 border-b border-slate-200">
         <div>
           <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
             <FileCheck className="w-5 h-5 text-teal-700" />
@@ -120,7 +120,7 @@ export const ConfirmSubmitModal: React.FC<ConfirmSubmitModalProps> = ({
         <button
           type="button"
           onClick={onClose}
-          className="text-slate-400 hover:text-slate-700 cursor-pointer p-1 rounded-lg hover:bg-slate-100"
+          className="cb-adaptive-close text-slate-400 hover:text-slate-700 cursor-pointer p-1 rounded-lg hover:bg-slate-100"
           title={l10n("Close (Esc)")}
         >
           <X className="w-5 h-5" />

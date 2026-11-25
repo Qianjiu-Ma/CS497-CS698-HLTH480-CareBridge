@@ -1,7 +1,12 @@
+import 'overlayscrollbars/overlayscrollbars.css';
 import {createRoot} from 'react-dom/client';
 import App, { readInterfacePreference } from './App.tsx';
 import { loadInterfaceLocale, setInterfaceLocale } from './utils/localization';
+import { enhanceScrollbars } from './utils/overlayScrollbars';
 import './index.css';
+
+const disposeScrollbars = enhanceScrollbars(document.body);
+if (disposeScrollbars) import.meta.hot?.dispose(disposeScrollbars);
 
 async function start() {
   const language = readInterfacePreference();

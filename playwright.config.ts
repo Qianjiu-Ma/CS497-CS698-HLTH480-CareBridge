@@ -6,6 +6,7 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:3197',
     channel: process.env.CAREBRIDGE_BROWSER || undefined,
+    launchOptions: { ignoreDefaultArgs: ['--hide-scrollbars'] },
   },
   webServer: {
     command: 'npm run start',

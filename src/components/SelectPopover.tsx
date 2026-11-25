@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
 import { Button } from './WorkspaceUi';
+import { useOverlayScrollbars } from '../utils/overlayScrollbars';
 
 type Option<Value> = { value: Value; label: string; lang?: string };
 type Group<Value> = { label: string; options: readonly Option<Value>[] };
@@ -77,6 +78,7 @@ export function SelectPopover<Value extends string | number>({
       window.removeEventListener('scroll', place, true);
     };
   }, [open, openAt, trigger]);
+  useOverlayScrollbars(menu, 'y', open);
 
   useLayoutEffect(() => {
     if (menu.current && trigger.current) positionMenu(menu.current, trigger.current);

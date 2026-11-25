@@ -1,5 +1,7 @@
+import { cancelDialog, dismissDialog } from '../utils/dialogMotion';
 import { SelectPopover } from './SelectPopover';
 import { l10n } from '../utils/localization';
+import { useOverlayScrollbars } from '../utils/overlayScrollbars';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ChevronLeft, ChevronRight, Info, Lock, Mic, Printer, ShieldCheck, SlidersVertical, TriangleAlert,
@@ -73,6 +75,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ thresholds, onUpdate
   const pageTitle = page === 'rules' ? 'Stop & Watch rules' : page === 'thresholds' ? 'Alert thresholds'
     : page === 'privacy' ? 'Privacy & safety' : page === 'about' ? 'About CareBridge' : 'Settings';
 
+  useOverlayScrollbars(dialogRef, 'both', Boolean(dialog));
   useEffect(() => {
     if (dialog && !dialogRef.current?.open) dialogRef.current?.showModal();
   }, [dialog]);
@@ -89,7 +92,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ thresholds, onUpdate
     setDialog(next);
   };
 
-  const closeDialog = () => dialogRef.current?.close();
+  const closeDialog = () => dismissDialog(dialogRef.current);
 
   const navigate = (next: Page) => {
     setPage(next);
@@ -332,7 +335,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ thresholds, onUpdate
     <div className="carebridge-settings" ref={settingsRoot}>
       {page === 'home' ? (
         <>
-          <PageHeader ref={headingRef} title={l10n("Settings")} subtitle={l10n("Preferences and prototype configuration")} />
+          <PageHeader ref={headingRef} title={l10n("Settings")} />
           <section aria-labelledby="settings-preferences">
             <h2 className="group-label" id="settings-preferences">{l10n("Preferences")}</h2>
             <div className="cb-panel group">{row('Speech pause', Mic, (trigger) => {
@@ -388,7 +391,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ thresholds, onUpdate
           </div>}
         </>
       )}
-      <dialog className="cb-motion-dialog" ref={dialogRef} aria-labelledby="settings-modal-title" onClose={() => {
+      <dialog onCancel={cancelDialog} className="cb-motion-dialog cb-adaptive-sheet" ref={dialogRef} aria-labelledby="settings-modal-title" onClose={() => {
         setDialog(null);
         const target = openerRef.current;
         if (target?.isConnected) target.focus();

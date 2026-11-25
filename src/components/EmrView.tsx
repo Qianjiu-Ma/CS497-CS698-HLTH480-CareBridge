@@ -1,4 +1,7 @@
+import { cancelDialog, dismissDialog } from '../utils/dialogMotion';
 import { SelectPopover } from './SelectPopover';
+import { useCompactLayout } from '../utils/useCompactLayout';
+import { useOverlayScrollbars } from '../utils/overlayScrollbars';
 import { detectLanguage, speechLocaleFor } from '../utils/translator';
 import { formatUiDate, l10n, localizedShift } from '../utils/localization';
 import { ClinicalText } from './ClinicalText';
@@ -117,7 +120,9 @@ function FullShiftTable({ record, field, language }: {
   field: ArchiveField;
   language: InterfaceLanguage;
 }) {
-  return <div className="tablewrap" role="region" aria-label={l10n("Archived resident table")} tabIndex={0}>
+  const tableScroller = useRef<HTMLDivElement>(null);
+  useOverlayScrollbars(tableScroller, 'x');
+  return <div ref={tableScroller} className="tablewrap" role="region" aria-label={l10n("Archived resident table")} tabIndex={0}>
     <table className="fulltable"><thead><tr>
       {['Resident', 'Care done', 'Next shift', 'Stop & Watch', 'Observations & fluids', 'Nurse'].map((label) =>
         <th key={label} scope="col">{l10n(label)}</th>)}
@@ -141,6 +146,7 @@ function FullShiftTable({ record, field, language }: {
 }
 
 export const EmrView: React.FC<EmrViewProps> = ({ records, interfaceLanguage = 'en' }) => {
+  const compact = useCompactLayout();
   const [query, setQuery] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [shift, setShift] = useState('');
@@ -183,7 +189,6 @@ export const EmrView: React.FC<EmrViewProps> = ({ records, interfaceLanguage = '
   const terms = archivedSearchTerms(query);
   const filtersActive = Boolean(terms.length || shift || room || changesOnly);
   const totalResidents = records.reduce((total, record) => total + record.rows.length, 0);
-  const units = [...new Set(records.map((record) => record.header.unit).filter(Boolean))];
   const rooms = [...new Set(records.flatMap((record) => record.rows.map((row) => row.room)))].sort(
     (a, b) => a.localeCompare(b, undefined, { numeric: true }));
   const archive = records.flatMap((record) => {
@@ -199,6 +204,7 @@ export const EmrView: React.FC<EmrViewProps> = ({ records, interfaceLanguage = '
   const selectedRecord = details ? records.find((record) => record.id === details.recordId) : undefined;
   const selectedResident = details?.type === 'resident' ? selectedRecord?.rows.find((row) => row.room === details.room) : undefined;
   const hasDetails = Boolean(selectedRecord && (details?.type !== 'resident' || selectedResident));
+  useOverlayScrollbars(dialog, 'both', hasDetails);
 
   useEffect(() => {
     if (!hasDetails) {
@@ -336,7 +342,7 @@ export const EmrView: React.FC<EmrViewProps> = ({ records, interfaceLanguage = '
             </dl>
           </div>
           <FullShiftTable record={record} field={field} language={interfaceLanguage} />
-          {record.rows.length > 0 && <details className="detail">
+          {record.rows.length > 0 && <details className="detail cb-archive-documentation" open={compact || undefined}>
             <summary>{l10n("Resident documentation")}</summary>
             {record.rows.map((row) => <details className="resident-documentation" key={row.room}>
               <summary>{row.residentName}{" " + l10n("· Room") + " "}{row.room}</summary>
@@ -356,9 +362,9 @@ export const EmrView: React.FC<EmrViewProps> = ({ records, interfaceLanguage = '
         break;
     }
     return <>
-      <div className="modalhead">
+      <div className="modalhead cb-adaptive-head">
         <div><h2 id="archive-modal-title">{l10n(title)}</h2><p className="muted">{subtitle}</p></div>
-        <button type="button" autoFocus className="close" aria-label={l10n("Close")} onClick={() => dialog.current?.close()}><X /></button>
+        <button type="button" autoFocus className="close" aria-label={l10n("Close")} onClick={() => dismissDialog(dialog.current)}><X /></button>
       </div>
       <div className="archive-body">{body}<p className="muted" role="status">{l10n(copyMessage)}</p></div>
     </>;
@@ -366,7 +372,7 @@ export const EmrView: React.FC<EmrViewProps> = ({ records, interfaceLanguage = '
 
   return (
     <div className="emr-archive">
-      <PageHeader title={l10n("Records")} subtitle={(units.length === 1 ? units[0] + ' · ' : '') + l10n('Handoff archive')}
+      <PageHeader title={l10n("Records")}
         actions={<Button disabled={syncing} onClick={simulateSync}>
           <RefreshCcw className={syncing ? 'cb-pending' : undefined} /> {syncing ? l10n("Simulating sync…") : l10n("Simulate sync")}
         </Button>} />
@@ -419,7 +425,7 @@ export const EmrView: React.FC<EmrViewProps> = ({ records, interfaceLanguage = '
             <span className="docicon"><FileText /></span>
             <div className="shiftmeta"><h2>{meta.title}</h2>
               <p className="muted">{meta.hours ? meta.hours + ' · ' : ''}{l10n("Archived at") + " "}<time dateTime={record.submittedAt}>{meta.archivedAt}</time>
-                {units.length > 1 && ' · ' + record.header.unit}</p>
+                {record.header.unit && <> · <bdi>{record.header.unit}</bdi></>}</p>
               {record.acknowledgedByNurse ? <span className="signed"><CheckCircle2 />{" " + l10n("Signed ·") + " "}{record.acknowledgedByNurse}</span>
                 : <span className="muted">{l10n("Unsigned")}</span>}
             </div>
@@ -462,7 +468,7 @@ export const EmrView: React.FC<EmrViewProps> = ({ records, interfaceLanguage = '
       }) : <p className="empty">{records.length ? l10n("No matching records.") : l10n("No shifts archived yet.")}</p>}
       <WorkspaceFooter notice={lastSync ? l10n('Simulated sync at {{time}} · No connection to a live EMR', { time: lastSync }) : l10n('Read-only archive · No connection to a live EMR')} />
       <StatusToast>{syncMessage ? l10n("Simulated sync complete · Local records only") : ''}</StatusToast>
-      <dialog ref={dialog} aria-labelledby="archive-modal-title" className={details?.type === 'full' ? 'cb-motion-dialog wide' : 'cb-motion-dialog'}
+      <dialog onCancel={cancelDialog} ref={dialog} aria-labelledby="archive-modal-title" className={'cb-motion-dialog cb-adaptive-detail' + (details?.type === 'full' ? ' wide' : '')}
         onClose={() => {
           stopSpeech();
           setCopyMessage('');
@@ -473,7 +479,7 @@ export const EmrView: React.FC<EmrViewProps> = ({ records, interfaceLanguage = '
           if (event.target !== event.currentTarget) return;
           const bounds = event.currentTarget.getBoundingClientRect();
           if (event.clientX < bounds.left || event.clientX > bounds.right ||
-            event.clientY < bounds.top || event.clientY > bounds.bottom) event.currentTarget.close();
+            event.clientY < bounds.top || event.clientY > bounds.bottom) dismissDialog(event.currentTarget);
         }}>
         {selectedRecord && details && renderDialog(selectedRecord, details.type)}
       </dialog>

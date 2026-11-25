@@ -59,6 +59,14 @@
     animation: cb-drawer-in var(--cb-motion-layer) var(--cb-motion-settle);
   }
 
+  dialog[data-cb-closing][open] {
+    animation: cb-dialog-out var(--cb-motion-layer) var(--cb-motion-change) both;
+  }
+
+  dialog[data-cb-closing]::backdrop {
+    animation: cb-dialog-backdrop-out var(--cb-motion-layer) var(--cb-motion-change) both;
+  }
+
   .cb-toast {
     animation: cb-toast-in var(--cb-motion-state) var(--cb-motion-settle);
   }
@@ -68,18 +76,34 @@
   }
 }
 
+dialog[data-cb-closing] { pointer-events: none; }
+dialog.cb-motion-drawer { --cb-dialog-exit: translateX(var(--cb-drawer-entry, 12px)); }
+
+@media screen and (max-width: 700px) {
+  dialog.cb-adaptive-sheet { --cb-dialog-exit: translateY(32px); }
+}
+
+@keyframes cb-dialog-out {
+  from { opacity: var(--cb-exit-start-opacity); transform: var(--cb-exit-start-transform); }
+  to { opacity: 0; transform: var(--cb-dialog-exit, translateY(6px)); }
+}
+
+@keyframes cb-dialog-backdrop-out {
+  to { opacity: 0; }
+}
+
 @keyframes cb-popover-in {
   from { opacity: .96; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes cb-dialog-in {
-  from { opacity: .96; transform: translateY(6px); }
+  from { opacity: .96; transform: var(--cb-dialog-exit, translateY(6px)); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes cb-drawer-in {
-  from { transform: translateX(12px); }
+  from { transform: translateX(var(--cb-drawer-entry, 12px)); }
   to { transform: translateX(0); }
 }
 

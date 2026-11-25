@@ -1065,7 +1065,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
   return (
     <div className="cb-report">
       {/* Unified Single-Row Report Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="cb-report-toolbar flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <Button variant={isListening ? 'danger' : 'primary'} onClick={toggleListening}>
             {isListening ? <><MicOff />{l10n('Stop ({{time}})', { time: formatTimer(secondsListening) })}</> : <><Mic />
@@ -1101,7 +1101,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
         </div>
         <div className="cb-page-actions">
           {toolbarActions}
-          <div className="relative" ref={scenarioDropdownRef}>
+          <div className="cb-report-more relative" ref={scenarioDropdownRef}>
             <Button id="report-more-trigger" aria-expanded={activeScenarioOpen} aria-controls="report-more-panel"
               onClick={() => setActiveScenarioOpen(!activeScenarioOpen)}>
               <SlidersHorizontal />{" " + l10n("More")}

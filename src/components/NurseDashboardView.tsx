@@ -1,5 +1,7 @@
+import { cancelDialog, dismissDialog } from '../utils/dialogMotion';
 import { ClinicalText } from './ClinicalText';
-import { l10n, localizedShift } from '../utils/localization';
+import { l10n } from '../utils/localization';
+import { useOverlayScrollbars } from '../utils/overlayScrollbars';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertThresholds, HandoffRow, NurseEscalation } from '../types/handoff';
 import {
@@ -36,8 +38,8 @@ interface NurseDashboardViewProps {
   escalations: NurseEscalation[];
   rows: HandoffRow[];
   thresholds: AlertThresholds;
-  unit?: string;
-  shift?: string;
+  nurseName: string;
+  onNurseNameChange: (name: string) => void;
   customCodeTiers?: Record<string, SeverityTier>;
   onAcknowledgeEscalation: (
     id: string,
@@ -251,8 +253,8 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
   escalations,
   rows,
   thresholds,
-  unit = 'Maple Neighborhood',
-  shift,
+  nurseName,
+  onNurseNameChange,
   customCodeTiers,
   onAcknowledgeEscalation,
   onUpdateEscalationNote,
@@ -265,7 +267,6 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
   const [filter, setFilter] = useState<TriageFilter>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailCodeId, setDetailCodeId] = useState<string | null>(null);
-  const [nurseName, setNurseName] = useState('K. Lewis, RN');
   const [isEditingNurseName, setIsEditingNurseName] = useState(false);
   const [nurseNameDraft, setNurseNameDraft] = useState(nurseName);
   const [assessmentDraft, setAssessmentDraft] = useState('');
@@ -555,6 +556,8 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
     .find((item) => item.id === selectedId);
   const detailCodeConfig = detailCodeId ? getCodeConfig(detailCodeId, customCodeTiers) : null;
   const detailTierMeta = detailCodeConfig ? TIER_METADATA[detailCodeConfig.defaultTier] : null;
+  useOverlayScrollbars(dialogRef, 'both', Boolean(selectedConcern));
+  useOverlayScrollbars(criteriaRef, 'both', Boolean(detailCodeConfig));
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -591,7 +594,7 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
 
   const saveNurseIdentity = () => {
     const trimmed = nurseNameDraft.trim();
-    if (trimmed) setNurseName(trimmed);
+    if (trimmed) onNurseNameChange(trimmed);
     setIsEditingNurseName(false);
     queueMicrotask(() => document.getElementById('clinical-review-nurse')?.focus());
   };
@@ -635,7 +638,7 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
     }
 
     setAnnouncement(resolve ? 'Concern resolved.' : 'Assessment saved.');
-    dialogRef.current?.close();
+    dismissDialog(dialogRef.current);
   };
 
   const renderCodeCriteriaButtons = (codes: string[]) => {
@@ -839,13 +842,13 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
     const templates = needsReview ? getAssessmentTemplates(item.codes, item.isBmOverdue, item.isLowFluid) : [];
     return (
       <div className="clinical-review-dialog-body">
-        <div className="clinical-review-detail-head">
+        <div className="clinical-review-detail-head cb-adaptive-head">
           <div>
             <p className="clinical-review-sub">{l10n("Room") + " "}{item.room} · {l10n(concernStatus(item))}</p>
             <h2 id="clinical-review-dialog-title">{item.residentName}</h2>
           </div>
           <button type="button" autoFocus className="clinical-review-close" aria-label={l10n("Close clinical review")}
-            onClick={() => dialogRef.current?.close()}><X /></button>
+            onClick={() => dismissDialog(dialogRef.current)}><X /></button>
         </div>
         <section className="clinical-review-block">
           <h3 className={item.isPriorityAttention ? 'priority' : undefined}>
@@ -912,7 +915,7 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
             <Button variant="primary" onClick={() => {
               onReopenEscalation(esc.id);
               setAnnouncement('Concern reopened for monitoring.');
-              dialogRef.current?.close();
+              dismissDialog(dialogRef.current);
             }}>{l10n("Reopen for monitoring")}</Button>
           </div>
         ) : (
@@ -980,11 +983,9 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
     { id: 'pending', label: 'Needs review', count: pendingItemsAll.length },
     { id: 'resolved', label: 'History', count: resolvedItems.length },
   ];
-  const shiftLabel = shift?.replace(/^(Day|Evening|Night) \(.*\)$/, '$1 shift');
-
   return (
     <div className="clinical-review">
-      <PageHeader title={l10n("Clinical review")} subtitle={<span title={localizedShift(shift || '')}>{[unit, l10n(shiftLabel || '')].filter(Boolean).join(' · ')}</span>}
+      <PageHeader title={l10n("Clinical review")}
         actions={isEditingNurseName ? (
           <form className="clinical-review-nurse" onSubmit={(event) => {
             event.preventDefault();
@@ -1002,12 +1003,12 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
           </form>
         ) : (
           <button type="button" id="clinical-review-nurse" className="clinical-review-nurse"
-            aria-label={nurseName + ', edit signing nurse name'}
+            aria-label={l10n('Edit signing nurse name: {{nurse}}', { nurse: nurseName })}
             onClick={() => {
               setNurseNameDraft(nurseName);
               setIsEditingNurseName(true);
             }}>
-            <span className="clinical-review-avatar"><UserRound /></span>{nurseName}
+            <span className="clinical-review-avatar"><UserRound aria-hidden="true" /></span><bdi>{nurseName}</bdi>
           </button>
         )} />
       <nav className="clinical-review-tabs" aria-label={l10n("Review filters")} ref={filterRef}>
@@ -1043,15 +1044,15 @@ export const NurseDashboardView: React.FC<NurseDashboardViewProps> = ({
         )}
       </WorkspaceFooter>
       <div className="sr-only" role="status">{l10n(announcement)}</div>
-      <dialog className="clinical-review-dialog cb-motion-dialog" ref={dialogRef} aria-labelledby="clinical-review-dialog-title"
+      <dialog onCancel={cancelDialog} className="clinical-review-dialog cb-motion-dialog cb-adaptive-detail" ref={dialogRef} aria-labelledby="clinical-review-dialog-title"
         onClose={handleDialogClose}>
         {selectedConcern && renderConcernDetail(selectedConcern)}
       </dialog>
       {detailCodeConfig && detailTierMeta && (
-        <dialog className="clinical-review-criteria" ref={criteriaRef} aria-label={l10n("Stop & Watch clinical criteria")}
+        <dialog onCancel={cancelDialog} className="clinical-review-criteria cb-adaptive-sheet cb-motion-dialog" ref={criteriaRef} aria-label={l10n("Stop & Watch clinical criteria")}
           onClose={() => setDetailCodeId(null)}>
-          <StopAndWatchDetailModal config={detailCodeConfig} tierMeta={detailTierMeta}
-            onClose={() => criteriaRef.current?.close()} />
+          <StopAndWatchDetailModal embedded config={detailCodeConfig} tierMeta={detailTierMeta}
+            onClose={() => dismissDialog(criteriaRef.current)} />
         </dialog>
       )}
     </div>

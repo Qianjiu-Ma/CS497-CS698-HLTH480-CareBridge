@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @import "./carebridge.css";
 @import "./carebridge-motion.css";
+@import "./carebridge-adaptive.css";
+@import "./carebridge-scrollbars.css";
+@import "./carebridge-editor.css";
 
 @theme {
   --default-transition-duration: var(--cb-motion-feedback);
